@@ -26,6 +26,7 @@ image_coll_v2=$rbd_image/image_coll_v2
 pg_coll=$rbd_image/pg_coll
 images=$rbd_image/images
 images_meta=$rbd_image/images_meta
+kvdb_type=leveldb
 default_backup_dir=/var/rbd_tool/default_backup_dir
 
 # admin node: image snap & nosnap
@@ -246,7 +247,10 @@ function admin_parse_osd()
 # for osd node
 function get_omap_list()
 {
-  ceph-kvstore-tool $omap_path list > $omap_list
+  if [ $debug ]; then
+	echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list"
+  fi	
+  ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list
 }
 
 function convert_underline()
@@ -329,7 +333,7 @@ function get_header_seq()
   local key=$2;
   local res=/tmp/header_seq.$$$$
 
-  ceph-kvstore-tool $omap_path get $prefix $key 2>/dev/null 1>$res
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
   if [ $? != 0 ]; then
     #echo "$func: <$prefix , $key> not exists" ;
     exit;
@@ -385,7 +389,7 @@ function get_header_kv()
   local types=$3
   local res=/tmp/kv.$$$$
 
-  ceph-kvstore-tool $omap_path get $prefix $key 2>/dev/null 1>$res
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
   if [ $? != 0 ];then
     #echo "$func: <$prefix , $key> not exists" 
     exit
