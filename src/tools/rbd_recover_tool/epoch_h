@@ -64,6 +64,9 @@ function get_pg_epoch()
     exit
   fi
 
+  ###
+  #  how to elaborate the target ceph releases?
+  ###
   get_pg_epoch_firefly "$1"
   if [ "$pg_epoch"x != ""x ]; then
     #if [ $debug ]; then
@@ -72,6 +75,7 @@ function get_pg_epoch()
     return
   fi
 
+  # since hammer: omap is using _HOBJTOSEQ_ as key
   get_pg_epoch_hammer "$1"
   if [ "$pg_epoch"x != ""x ]; then
       #if [ $debug ]; then
@@ -92,6 +96,10 @@ function get_pg_epoch_firefly()
     echo "$func: no pgid input"
     exit
   fi
+
+  # Metadata Definitions: https://github.com/ceph/ceph/blob/master/src/tools/rbd_recover_tool/metadata_h
+  # for image format 1: <image_name>.rbd inlude 3 parts:
+  # header + snap_count*snapshot + snap_count*snap_name  
   local pgid=$1
   local key=$pgid"_epoch"
 
@@ -111,6 +119,20 @@ function get_pg_epoch_hammer()
     echo "$func: no pgid input"
     exit
   fi
+
+  # Metadata Definitions: https://github.com/ceph/ceph/blob/master/src/tools/rbd_recover_tool/metadata_h
+  # for image format 2: map_header, header_seq, header, key/value
+  # eg. 
+  # map_header	_HOBJTOSEQ_:rbd%uheader%e139a6b8b4567...head.2.68E826B6
+  # meta_header_seq	17426
+  # header:		_USER_0000000000017426_USER_:object_prefix
+  #			_USER_0000000000017426_USER_:order
+  #			_USER_0000000000017426_USER_:size
+  #			_USER_0000000000017426_USER_:snap_seq
+  #			_USER_0000000000017426_USER_:snapshot
+  #			_USER_0000000000017426_USER_:features
+  #			_USER_0000000000017426_USER_:_epoch
+  # key/value		ceph-kvstore-tool /storepath get _USER_0000000000017426_USER_ (object_prefix|order|size|snap_seq|_epoch)
   local pgid="$1"
   local hkey_prefix="$(get_map_header_prefix)"
   local hkey="$(printf '...head.%x.%08X' "$(echo "$pgid"|cut -d'.' -f1)" "$((0x$(echo "$pgid"|cut -d'.' -f2)))")"
