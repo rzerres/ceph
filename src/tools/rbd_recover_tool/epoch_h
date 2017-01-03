@@ -41,7 +41,7 @@ function get_infos_seq()
   local keyword=":infos." 
   local infos_key=`get_map_header_key $keyword`
 
-  if [ "$infos_key"x = ""x ];then
+  if [ "$infos_key"x = ""x ]; then
     echo "$func: keyword not input or infos_key not exisits"
     exit 
   fi
@@ -49,7 +49,7 @@ function get_infos_seq()
   local key=$infos_key
 
   infos_seq=`get_header_seq $prefix $key`
-  if [ "$infos_seq"x = ""x ];then
+  if [ "$infos_seq"x = ""x ]; then
     echo "$func: infos_seq not exists"
     exit
   fi
@@ -59,7 +59,7 @@ pg_epoch=
 function get_pg_epoch()
 {
   local func="get_pg_epoch"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
     echo "$func: no pgid input"
     exit
   fi
