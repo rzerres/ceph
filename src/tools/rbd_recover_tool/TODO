@@ -1,2 +1,6 @@
 
-1.support clone imag
+1. support for clone images
+2. cleanup snapshot handling
+3. refine restore methods
+4. support for rbd-objects with non-default stipe_unit, stipe_count 
+
