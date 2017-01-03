@@ -33,6 +33,7 @@ found=0
 function gen_database()
 {
   local func="gen_database"
+  echo "$func ..."
   rm -rf $database/*
   rm -rf $images
   rm -rf $raw
@@ -49,8 +50,12 @@ function gen_database()
       if [ "$host"x = ""x ] || [ "$data_path"x = ""x ]; then
  	continue
       fi
-      local cmds="find $data_path/current -type f"
-      ssh $ssh_option $host $cmds > $database/$host
+      local whoami
+      local cmd1="cat $data_path/whoami"
+      whoami=`ssh $ssh_option $host $cmd1`
+      local cmd2="find $data_path/current -type f"
+      echo "[$host]: get reference-objects from osd.$whoami ..."
+      ssh $ssh_option $host $cmd2 > $database/$host 2>/dev/null
     } &
   done < $osd_host_path
   wait
@@ -158,10 +163,17 @@ function gather_hobject_common()
       system("awk  \"\\$1 == \\\""node"\\\" && \\$2 == \\\""pgid"\\\" && \\$4 == \\\""data_path"\\\" {print \\$3}\" "pg_coll" >>"tmp_image);
       #system("awk  \"\\$1 == \\\""node"\\\" && \\$2 == \\\""pgid"\\\" && \\$4 == \\\""data_path"\\\" {print \\$3}\" "pg_coll);
   }'
+  if [ $debug ]; then
+    echo "$func: tmp_image -> $tmp_image"  
+  fi
 
   local sort_image=$offset_dir_temp/sortimage.$$$$
   >$sort_image
+  # key 4: 
+  # key 6: 
+  # key 1: 
   sort -t ' ' -k 4.1,4 -k 6.1nr -k 1.1,1 $tmp_image >$sort_image
+  # key 4: epoch, sort descending (max number first)
   sort -t ' ' -k 4.1,4 -u $sort_image > $image_hobjects_stable
   
   #rm -rf $offset_dir_temp
@@ -178,11 +190,12 @@ function gather_hobject_snap()
   gather_hobject_common $1 $2 $3
 }
 
-# select the max pg_epoch item of the same $field
-# if no same $field, choose the first 
-# format : "node $field pg_epoch"
+# select object-path with max epoch number
+# input format: "node object-path pg_epoch"
 function choose_epoch()
 {
+  # key 3: epoch, sort descending (max number first)
+  # key 2: object-path, sort hex value accending
   cat $1|sort -t ' ' -k 3.1,3nr -k 2.1,2n |head -n 1;
 }
 
@@ -278,37 +291,61 @@ function lookup_image()
       fi
 
       check_osd_process $node
-      image_format=2
       
       local tid=/tmp/image_id.$$$$
       data_path=`echo $image_id_hobject|awk -F "/current" '{print $1}'`
       >$tid
       cmds="bash $job_path/osd_job do_image_id $data_path `dump_backslash $image_id_hobject`" 
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> get matching image-id"
+	echo "$func: rbd-object-v2 -> ssh $ssh_optoin $node $cmds"
+      fi
       ssh $ssh_option $node $cmds > $tid
 
       local image_id=`cat $tid`
       rm -f $tid
+      if [ $verbose ]; then
+	echo "$func: rbd-object-v2 -> image_id='$image_id'"
+      fi
 
-      #get image_header_hobject
+      # get image_hobject
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> get image_hobject ..."
+      fi
+
+      # database: filename = osd-node (hostname)
+      #           contents = path to object references
+      # pattern:  header information for given image_id
+      # tcoll:    list of hostnames containing pgid's of requested image_id
       pushd $database >/dev/null
-      local pattern="header\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
+      local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
       local tcoll=/tmp/tmp_image_head_coll.$$$$
-
-      # hostname(by command hostname) in $pg_coll  maybe different from hostname in tcoll(input by user) 
-      # t_host:        hostname read from config file ($tcoll)
-      # t_host_remote: $(hostname) on osd node ($pg_coll)
-      grep -r -E $pattern * >$tcoll
+      if [ $verbose ]; then
+	echo "$func: rbd-object-v2 -> image header search-pattern='$pattern'"
+      fi
+      # we need the grep to include the filename = node for any match
+      grep --with-filename -E $pattern * >$tcoll
       popd >/dev/null
 
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> get image_hobject with highest pg_epoch for given image-name ..."
+      fi
+      # split up fields from osd-node elements found in database files
       local t_host=(`cat $tcoll|awk -F ":" '{print $1}'`)
       local t_pgid=(`cat $tcoll|awk -F ":" '{print $2}'|sed -n 's/.*\/\([0-9a-fA-F]\+\.[0-9a-fA-F]\+\)_head\/.*/\1/p'`)
       local t_hobject=(`cat $tcoll|awk -F ":" '{print $2}'`)
       local t_data_path=(`cat $tcoll|awk -F ":" '{split($2, arr, "/current/"); print arr[1];}'`)
       rm -f $tcoll
-      declare -a t_host_remote
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> target hostname from config-file (t_host): ${t_host}"
+	echo "$func: rbd-object-v2 -> target id of placement group (t_pgid):     ${t_pgid}"
+	echo "$func: rbd-object-v2 -> target name of header object (t_hobject):  ${t_hobject}"
+	echo "$func: rbd-object-v2 -> target data path for object (t_data_path): ${t_data_path}"
+      fi
 
-      #if there is no failed pg migration, number of t_host is replica num
-      #replica num : 3, 4, 5 ...
+      # the replicated-pool (pool_id) has an associated replication number (attribute: size)
+      # successfull processing of its associated crush-ruleset will place affected rbd-objects
+      # on the assigned osd-hosts. We process the osd-hosts in question in an array (t_host_remote[*])
       local t_hostname=/tmp/t_hostname.$$$$
       for ((i=0; i<${#t_host[*]}; i++))
       do
@@ -317,26 +354,51 @@ function lookup_image()
 	  echo "$func: ${t_host[$i]} failed to get hostname!"
 	  exit
 	fi
-        t_host_remote[$i]=`cat $t_hostname`	
+        t_host_remote[$i]=`cat $t_hostname`
       done
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> target osd-nodes involved (t_host_remote): ${t_host_remote[*]}"
+      fi
       rm -f $t_hostname
 
+      # for each osd-node: process hostname and placement-groups on osd-node
       local t_item=/tmp/tmp_item.$$$$
       local tmp_item=/tmp/tmp_tmp_item.$$$$
-      
       >$tmp_item
-      for ((i=0; i<${#t_host_remote[*]}; i++ ))
+
+      for ((i=0; i<${#t_host_remote[*]}; i++))
       do
 	local node=${t_host_remote[$i]}
 	local pgid=${t_pgid[$i]}
 	awk '$1 == "'"$node"'" && $2 == "'"$pgid"'" {print}' $pg_coll >>$tmp_item
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> processing target osd-node ($i): ${t_host_remote[$i]}"
+	    echo "$func: rbd-object-v2 -> processing target hobject ($i):  ${t_hobject[$i]}"
+	    echo "$func: rbd-object-v2 -> processing target pgid on ($i):  ${t_pgid[$i]}"
+	    echo "$func: rbd-object-v2 -> processing target path on ($i):  ${t_data_path[$i]}"
+	    echo "$func: rbd-object-v2 -> sourcing pg collection: ${pg_coll}"
+	fi
       done
 
-      # t_item: <remote_hostname> <pgid> <epoch> <data_path>
+      # t_item: <remote_hostname> <pgid> <pg_epoch> <data_path>
       sort -u $tmp_item >$t_item
+
+      # the number of entries in $tmp_item should represent the replicaton number with following structure:
+      # hostname: osd-node, placement-group: pgid, hightest epoch: pg_epoch, data-path: ceph-osd
+      if [ $debug ]; then
+        echo "$func: rbd-object-v2 -> found following replicated header objects:"
+        echo "stucture: osd-host, pgid, pg_epoch, data-path" 
+        cat $tmp_item
+      fi
       rm -f $tmp_item
 
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> entry: select object with highest pg_epoch ..."
+      fi
       local entry=`choose_epoch $t_item` #t_host_remote
+      if [ $debug ]; then
+	echo "$func: rbd-object-v2 -> entry: <$entry>"
+      fi
       rm -f $t_item
 
       node=`echo $entry|awk '{print $1}'`
@@ -346,10 +408,21 @@ function lookup_image()
         exit
       fi
 
+      image_hobject=$t_hobject
       for ((i=0; i<${#t_host_remote[*]}; i++))
       do
-	if [ "${t_host_remote[$i]}"x = "$node"x ] && [ "${t_data_path[$i]}"x = "$data_path"x ];then
-	  image_header_hobject=${t_hobject[$i]}
+	# because the systemname of the osd-node (t_host_remote) may differ from the saved
+	# hostname in the database files (t_host) we need to verify a matching data_path
+	#if [ $debug ]; then
+	#  echo "t_host_remote[$i]: ${t_host_remote[$i]}"
+	#  echo "osd node:          $node"
+	#  echo "t_data_path[$i]:   ${t_data_path[$i]}"
+	#  echo "data_path:         $data_path"
+	#  echo "t_hobject[$i]:     ${t_hobject[$i]}"
+	#  echo "t_hobject:         $t_hobject"
+	#fi
+	if [ "${t_host_remote[$i]}"x = "$node"x ] && [ "${t_data_path[$i]}"x = "$data_path"x ]; then
+	  image_hobject=${t_hobject[$i]}
 	  break
 	fi
       done
@@ -359,18 +432,29 @@ function lookup_image()
         exit
       fi
 
-      check_osd_process $node
-     
-      echo "$func: rbd_header_hobject = $node $image_header_hobject"
-      echo -e "image_name:\t$image_name_in"
-      echo -e "image_format:\t$image_format"
-
+      image_format=2
       #data_path=`echo $image_header_hobject|awk -F "/current" '{print $1}'`
       >$result
-      cmds="bash $job_path/osd_job do_image_metadata_v2 $data_path $image_id `dump_backslash $image_header_hobject` $snap_name" 
-      ssh $ssh_option $node $cmds | tee $result
-    fi
-  }
+      echo "$func: rbd-object-v2 -> lookup attributes"
+      echo -e "image_name:\t$image_name_in"
+      echo -e "image_format:\t$image_format"
+      echo -e "image_id:\t$image_id"
+      echo -e "osd_name:\t$node"
+      echo -e "data_path:\t$data_path"
+      echo -e "header_object:\t$image_hobject"
+
+      # make sure there is no active ceph-osd process on target osd-node
+      check_osd_process $node
+     
+      # process the metadata
+      cmd="bash $job_path/osd_job do_image_metadata_v2 $data_path $image_id `dump_backslash $image_hobject` $snap_name" 
+      if [ $debug ]; then
+	echo "$func: call -> 'ssh $ssh_option $node $cmd'"
+      fi
+      ssh $ssh_option $node $cmd | tee $result
+    fi  #end if [ -s $res1 ]; then
+
+  } #end image format v2
 
   if [ ! -s $result ]; then
     echo "$func: $image_name_in does not exist, terminating" 
