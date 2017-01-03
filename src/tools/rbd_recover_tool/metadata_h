@@ -18,8 +18,11 @@
 #
 
 my_dir=$(dirname "$0")
-. $my_dir/common_h
+
 . $my_dir/epoch_h
+
+# is included from epoch_h
+#. $my_dir/common_h
 
 # put origin name in $image_name_in: for output
 # put convert "_" name in $image_name: for grep image hobjects from database
@@ -43,8 +46,8 @@ function input_image()
 #image_list_v2=$single_node/$cluster-$id/image_list_v2
 function get_image_list()
 {
-  find $osd_data/current/ -type f|grep ".rbd__" >$image_list_v1
-  find $osd_data/current/ -type f|grep "rbd\\\\uid." >$image_list_v2
+  find $osd_data/current/ -type f -regex '.*/rbd__.*' >$image_list_v1
+  find $osd_data/current/ -type f -regex '.*/rbd.\uid.*' >$image_list_v2
 }
 
 function get_image_format_by_hobject()
@@ -67,7 +70,16 @@ function get_image_format_by_hobject()
 }
 
 #======================================== image format v1 ========================================  
+# /*
+#  * old-style rbd image 'foo' consists of objects
+#  *   foo.rbd      - image metadata
+#  *   rb.<idhi>.<idlo>.00000000
+#  *   rb.<idhi>.<idlo>.00000001
+#  *   ...          - data
+#  */
+
 # <image_name>.rbd inlude 3 parts:
+
 # header + snap_count*snapshot + snap_count*snap_name
 # 
 # struct rbd_obj_header_ondisk {
@@ -85,19 +97,19 @@ function get_image_format_by_hobject()
 # 8	__le64 snap_seq;  //hexdump -C s=88 n=8
 # 4	__le32 snap_count;//hexdump -C s=96 n=4
 # 4	__le32 reserved;
-# 8	__le64 snap_names_len;//hexdump -C s=104 n=8
+# 8	__le64 snap_names_len; //hexdump -C s=104 n=8
 # 	struct rbd_obj_snap_ondisk snaps[0];
 # } __attribute__((packed));
 #
 # sizeof(rbd_obj_header_ondisk): 112
 #
 # struct rbd_obj_snap_ondisk {
-# 8	__le64 id;    //hexdump -C s=112+i*16 n=8   , i=[0, snap_count)
-# 8	__le64 image_size;//hexdump -C s=112+i*16+8 n=8, i=[0, snap_count)
+# 8	__le64 id;             //hexdump -C s=112+i*16 n=8   , i=[0, snap_count)
+# 8	__le64 image_size;     //hexdump -C s=112+i*16+8 n=8, i=[0, snap_count)
 # } __attribute__((packed));
 # sizeof(rbd_obj_snap_ondisk): 16
 #
-# get snap_names form <image_nane>.rbd
+# get snap_names form <image_name>.rbd
 # hexdump -e '10/1 "%_c"' -s $((112 + $snap_count*16)) -n $snap_names_len <image_name>.rbd
 # then split snap_names into array
 
@@ -190,15 +202,16 @@ function get_image_metadata_v1()
 
 #======================================== image format v2 ======================================== 
 
-# map_header, header_seq, header, key/value
-# eg. 
-# map_header		_HOBJTOSEQ_:rbd%uheader%e139a6b8b4567...head.2.68E826B6
-# meta_header_seq	17426
-# header:		_USER_0000000000017426_USER_:object_prefix
-#			_USER_0000000000017426_USER_:order
-#			_USER_0000000000017426_USER_:size
-#			_USER_0000000000017426_USER_:snap_seq
-# key/value		ceph-kvstore-tool /storepath get _USER_0000000000017426_USER_ (object_prefix|order|size|snap_seq)
+# /* New-style rbd image 'foo' consists of objects
+#  *   rbd_id.foo              - id of image
+#  *   rbd_header.<id>         - image metadata
+#  *   rbd_object_map.<id>     - optional image object map
+#  *   rbd_data.<id>.00000000
+#  *   rbd_data.<id>.00000001
+#  *   ...                     - data
+#  */
+
+# key/value: ceph-kvstore-tool kvdb-type /storepath get _USER_0000000000017426_USER_ (object_prefix|order|size|snap_seq)
 
 # decode image id from image_id_hobject 
 function get_image_id()
@@ -210,14 +223,16 @@ function get_image_id()
   local image_id_hobject=$1 #from admin node's database
 
   if [ ! -e $image_id_hobject ];then
-    #echo "$func: $image_id_hobject not exists"
+    echo "$func: given rados object id <$image_id_hobject> does not exist"
     exit;
   fi
   
-  # get len of string  
-  local n=`hexdump -e '10/4 "%u"' -s 0 -n 4 $image_id_hobject`
-  # get string
-  hexdump -e '10/1 "%c"' -s 4 -n $n $image_id_hobject
+  # get len of string (offset 0, 4 fields)  
+  #local n=`hexdump -e '10/4 "%u"' -s 0 -n 4 $image_id_hobject`
+  #hexdump -e '10/1 "%c"' -s 4 -n $n $image_id_hobject
+  local lenhex=`xxd -seek 0 -len 1 -p $image_id_hobject`
+  local len=$((16#$lenhex))
+  xxd -seek 4 -len $len -p $image_id_hobject | xxd -p -r
 }
 
 #find image_id omap entry in omaplist
@@ -228,15 +243,18 @@ function get_map_header()
   local func="get_map_header"
   local image_id=$1
   if [ "$image_id"x = ""x ];then
-    echo "$func: no image_id input"
+    echo "$func: ceph-kvstore-tool missing parameter <image_id>"
     exit;
   fi
   map_header_prefix=`get_map_header_prefix`
   local keyword="header%e"$image_id
   map_header_key=`get_map_header_key $keyword`
   if [ "$map_header_key"x = ""x ];then
-    echo "$func: map_header_key is NULL(not in omaplist)"
+    echo "$func: map_header_key is NULL (not in omaplist)"
     exit
+  fi
+  if [ $debug ]; then
+    echo "$func: map_header_key: $map_header_key"
   fi
 }
 
@@ -245,16 +263,20 @@ meta_header_seq=
 function get_meta_header_seq() 
 {
   local func="get_meta_header_seq"
-  if [ "$1"x == ""x ];then
-    echo "$func: no prefix input"
-    exit;
-  elif [ "$2"x == ""x ];then
-    echo "$func: no key input"
-    exit;
+  if [ "$1"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <prefix>"
+      exit;
+  elif [ "$2"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <key>"
+      exit;
   fi
+
   local prefix=$1;
   local key=$2;
   meta_header_seq=`get_header_seq $prefix $key`
+  if [ $debug ]; then
+    echo "$func: meta_header_seq: $meta_header_seq"
+  fi
 }
 
 # get image metadata : object_prefix, order, image_size, snap_seq
@@ -266,27 +288,110 @@ function get_image_metadata_v2()
 {
   local func="get_image_metadata_v2"
   if [ "$1"x = ""x ];then
-    echo "$func: no meta_header_seq input"
+    echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
     exit;
   fi
   local meta_header_seq=`printf "%016d" $1`
-  #echo "$func: meta_header_seq = "$meta_header_seq
+  if [ $debug ]; then
+      echo "$func: meta_header_seq = $meta_header_seq"
+  fi
   local ghobject_key="_USER_"$meta_header_seq"_USER_"
   local prefix=$ghobject_key
+  if [ $debug ]; then
+      echo "$func: ghobject_key = $ghobject_key"
+  fi
 
-  object_prefix=`get_header_kv $prefix object_prefix string`
-  #object_prefix="rbd_data.$image_id"
-  order=`get_header_kv $prefix order int`
-  image_size=`get_header_kv $prefix size int` 
-  snap_seq=`get_header_kv $prefix snap_seq int`
-
+  object_prefix=$(get_header_kv $prefix object_prefix string 4 20)
+  order=$(get_header_kv $prefix order int 0 1)
+  image_size=$(get_header_kv $prefix size int 4) 
+  snap_seq=$(get_header_kv $prefix snap_seq int)
+ 
   echo -e "object_prefix:\t$object_prefix"
-  echo -e "order:\t\t$order"
-  echo -e "image_size:\t$image_size"
-  echo -e "snap_seq:\t$snap_seq"
+  echo -e "order (2^x):\t$order"
+  echo -e "object-size:\t$((2**$order/1024)) KBytes"
+  echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
+  echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
+  #echo -e "snap_seq:\t$snap_seq"
 
+  # list features
+  list_features_v2 $1
+  
+  # get stripe_unit; stripe_count
+  # ceph-objectstore_tool
+  # Must provide
+  # --op (info, log, remove, mkfs, fsck, export, import, list, \
+  #       fix-lost, list-pgs, rm-past-intervals, dump-journal, dump-super, meta-list, \
+  #       get-osdmap, set-osdmap, get-inc-osdmap, set-inc-osdmap, mark-complete)
+  
   # list snapshot
-  list_snaps_v2 $1 $2
+  list_snapshots_v2 $1 $2
+}
+
+function list_features_v2()
+{
+  local func="list_features_v2"
+  if [ "$1"x = ""x ];then
+    echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
+    exit
+  fi
+  # Source definitions: /src/include/rbd/features.h
+  #define RBD_FEATURE_LAYERING             (1ULL<<0)
+  #define RBD_FEATURE_STRIPINGV2           (1ULL<<1)
+  #define RBD_FEATURE_EXCLUSIVE_LOCK       (1ULL<<2)
+  #define RBD_FEATURE_OBJECT_MAP           (1ULL<<3)
+  #define RBD_FEATURE_FAST_DIFF            (1ULL<<4)
+  #define RBD_FEATURE_DEEP_FLATTEN         (1ULL<<5)
+  #define RBD_FEATURE_JOURNALING           (1ULL<<6)
+  #define RBD_FEATURE_DATA_POOL            (1ULL<<7)
+  
+  #define RBD_FEATURE_NAME_LAYERING        "layering"
+  #define RBD_FEATURE_NAME_STRIPINGV2      "striping"
+  #define RBD_FEATURE_NAME_EXCLUSIVE_LOCK  "exclusive-lock"
+  #define RBD_FEATURE_NAME_OBJECT_MAP      "object-map"
+  #define RBD_FEATURE_NAME_FAST_DIFF       "fast-diff"
+  #define RBD_FEATURE_NAME_DEEP_FLATTEN    "deep-flatten"
+  #define RBD_FEATURE_NAME_JOURNALING      "journaling"
+  #define RBD_FEATURE_NAME_DATA_POOL       "data-pool"
+
+  # sum   255     all features set
+  # sum   125     layering,exclusive-lock,object-map,fast-diff,deep-flatten,journaling
+  # sum    61     layering,exclusive-lock,object-map,fast-diff,deep-flatten
+
+  if [ $verbose ]; then
+    echo "$func: get feature-mask ..."
+  fi
+  local t_host_remote[0]="layering"
+  local t_host_remote[1]="striping"
+  local t_host_remote[2]="exclusive-lock"
+  local t_host_remote[3]="object-map"
+  local t_host_remote[4]="fast-diff"
+  local t_host_remote[5]="deep-flatten"
+  local t_host_remote[6]="journaling"
+  local t_host_remote[7]="data-pool"
+  local feature_list=
+
+  if [ $debug ]; then
+    echo "$func: get feature-mask ..."
+    echo "$func: get_header_kv $prefix featrues init 0 1)"
+  fi
+  local feature_mask=$(get_header_kv $prefix features int 0 1)
+
+  echo -e -n "feature-mask:\t$feature_mask "
+  
+  for ((i=7; i>=0; i--))
+  do
+    value=$((2**$i))
+    if [ $feature_mask -ge $value ]; then
+      if [ $value -eq 1 ]; then
+	feature_list="$feature_list${t_host_remote[$i]}"
+      else
+	feature_list="$feature_list${t_host_remote[$i]}, "
+      fi
+      feature_mask=$((feature_mask-value))
+    fi
+  done
+
+  echo -e "(${feature_list})"
 }
 
 # struct cls_rbd_snap {
@@ -308,25 +413,46 @@ function get_image_metadata_v2()
 # 8	u64	features
 # ......
 #
-function list_snaps_v2()
+function list_snapshots_v2()
 {
-  local func="list_snaps_v2"
+  local func="list_snapshots_v2"
   if [ "$1"x = ""x ];then
+    echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
     exit
   fi
   local sname=
   if [ $# -eq 2 ];then
     sname=$2
   fi
+  if [ $debug ]; then
+      echo "$func: snapshot-name='$sname'"
+  fi
   local meta_header_seq=`printf "%016d" $1`
   local prefix="_USER_"$meta_header_seq"_USER_"
+
+# debug from here on!
+return
   local keys=(`awk -F ":" '/snapshot_/ && $1 == "'"$prefix"'" {if ($2 == "") exit; split($2, arr, "_"); 
 	print arr[2];}' $omap_list|sort -r`)
+  local tmp_snap=/tmp/tmp_snap.$$$$
+
   echo -e "\t\tID\tNAME\t\tSIZE"
   for key in ${keys[@]}
   do
     key="snapshot_$key"
-    local arr=(`ceph-kvstore-tool $omap_path get $prefix $key|awk -F ":" '{print $2}'`);
+    ceph-kvstore-tool $omap_path get $prefix $key out $tmp_snap 2>/dev/null >/dev/null
+    local arr=`cat $tmp_snap |awk -F ":" '{print $2}'`
+    #local arr=(`ceph-kvstore-tool $omap_path get $prefix $key|awk -F ":" '{print $2}'`);
+    if [ $debug ]; then
+      echo "$func: tmp_snap="
+      cat $tmp_snap	
+      echo "array: $arr"
+    fi
+
+    ###
+    # wip: refactor from here on!
+    ###
+    
     # get snap_name
     tmp=
     for ((i=17; i>13; i--))
