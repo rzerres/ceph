@@ -18,35 +18,41 @@
 
 my_dir=$(dirname "$0")
 
-. $my_dir/common_h
 . $my_dir/metadata_h
-. $my_dir/epoch_h
+
+# they are included from metadata_h
+#. $my_dir/common_h
+#. $my_dir/epoch_h
 
 function check_ceph_osd()
 {
   local func="check_ceph_osd"
   local host=`hostname`
-  # if ceph-osd service is still running, except flush-journal
-  if [ "`ps aux|grep ceph-osd|grep -v flush-journal|grep -v grep`"x != ""x ];then
-    echo "[$host]: $func: ceph-osd is running..., stop it"
-    exit 
+
+  # use systemctl if available
+  if [ -x /bin/systemctl ]; then
+    if [ `systemctl --host=$host --quiet is-active ceph-osd.target` >= 0 ]; then
+	#systemctl stop ceph-osd.target;
+	echo "[$host]: $func: ceph-osd is running ... "
+        echo "please deactivate it, before we can proceed"
+	exit
+    fi
+  else
+    if [ "`ps aux|grep ceph-osd|grep -v flush-journal|grep -v grep`"x != ""x ]; then
+      echo "[$host]: $func: ceph-osd is running..., stop it"
+      exit 
+    fi
   fi
 }
-
-function cat_pg_epoch()
-{
-  local func="cat_pg_epoch" 
-  init_env_osd $1
-  if [ -e $node_pg_epoch ];then
-    cat $node_pg_epoch
-  fi
-} 
 
 function cat_image_v1()
 {
   local func="cat_image_v1" 
+  if [ $debug ]; then
+     echo "$func ..."
+  fi
   init_env_osd $1
-  if [ -e $image_v1 ];then
+  if [ -e $image_v1 ]; then
     cat $image_v1
   fi
 } 
@@ -54,39 +60,39 @@ function cat_image_v1()
 function cat_image_v2()
 {
   local func="cat_image_v2" 
+  if [ $debug ]; then
+     echo "$func ..."
+  fi
   init_env_osd $1
-  if [ -e $image_v2 ];then
+  if [ -e $image_v2 ]; then
     cat $image_v2
   fi
 } 
 
-function flush_osd_journal()
+function cat_pg_epoch()
 {
-  local func="flush_osd_journal"
+  local func="cat_pg_epoch" 
   init_env_osd $1
-  local osd_data_path=$osd_data
-  local osd_journal_path=$osd_data/journal 
-  local whoami_path=$osd_data/whoami
-  local host=`hostname`
-  if [ ! -e $whoami_path ];then
-    echo "[$host]: $func: $whoami_path not exists"
-    exit
+  if [ -e $node_pg_epoch ]; then
+      # osd hostname, pg, epoch, osd data-path
+      cat $node_pg_epoch
   fi
-  local whoami=`cat $whoami_path`
-  echo "[$host]: $func ..."
-  ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null
-  if [ $? -ne 0 ];then
-    echo "[$host]: $func: flush osd journal failed"
-    exit
-  fi
-}
+} 
 
 function do_omap_list()
 {
   local func="do_omap_list"
   init_env_osd $1
   local host=`hostname`
-  echo "[$host]: $func ..."
+  local osd_data_path=$osd_data
+  local whoami_path=$osd_data/whoami
+  if [ ! -e $whoami_path ]; then
+    echo "[$host]: $func: $whoami_path does not exists"
+    exit
+  fi
+  local whoami=`cat $whoami_path`
+  echo "[$host]: $func for osd.$whoami ..."
+
   get_omap_list
 }
 
@@ -96,12 +102,20 @@ function do_pg_epoch()
   local func="do_pg_epoch"
   init_env_osd $1
   local node=`hostname`
+  local whoami_path=$osd_data/whoami
+  if [ ! -e $whoami_path ]; then
+    echo "[$host]: $func: $whoami_path does not exists"
+    exit
+  fi
+  local whoami=`cat $whoami_path`
+  echo "[$node]: $func for osd.$whoami ..."
   get_pgid_list
   >$node_pg_epoch
+  if [ $debug ]; then
+    >$node_pg_header_seq
+  fi
   local pgid=
   local data_path=
-  local host=`hostname`
-  echo "[$host]: $func ..."
   while read line
   do
   {
@@ -111,6 +125,17 @@ function do_pg_epoch()
     echo -e "$node $pgid $pg_epoch $data_path" >>$node_pg_epoch
   } 
   done < $pgid_list
+  if [ $debug ]; then
+    echo "[$host]: $func: node_pg_epoch -> node, pgid pg_epoch data_path"
+  fi
+
+}
+
+function do_image_id()
+{
+  local func="do_image_id"
+  init_env_osd $1
+  get_image_id $2
 }
 
 # get an list of image in this osd node, pg epoch maybe not the latest, the admin node will do distinguish
@@ -123,7 +148,13 @@ function do_image_list()
   >$image_v1
   >$image_v2
   local host=`hostname`
-  echo "[$host]: $func ..."
+  local whoami_path=$osd_data/whoami
+  if [ ! -e $whoami_path ]; then
+    echo "[$host]: $func: $whoami_path does not exists"
+    exit
+  fi
+  local whoami=`cat $whoami_path`
+  echo "[$host]: $func for osd.$whoami ..."
   for line in `cat $image_list_v1`
   do
     pgid=`get_pgid $line`
@@ -138,33 +169,59 @@ function do_image_list()
   done
 }
 
-function do_image_id()
-{
-  local func="do_image_id"
-  init_env_osd $1
-  get_image_id $2
-}
-
 function do_image_metadata_v1()
 {
   local func="do_image_metadata_v1"
   init_env_osd $1
-  local image_header_hobject=$2
+  local image_header_object=$2
   local snap_name=$3
-  get_image_metadata_v1 $image_header_hobject $snap_name
+  get_image_metadata_v1 $image_header_object $snap_name
 }
 
 function do_image_metadata_v2()
 {
   local func="do_image_metadata_v2"
+  if [ $debug ]; then
+      echo "$func: ..."
+      echo "$func: data_path=$1"
+      echo "$func: image_id=$2"
+      echo "$func: image_header_object=$3"
+      echo "$func: snap_name=$4"
+  fi
   init_env_osd $1
   local image_id=$2
-  local image_header_hobject=$3
+  local image_header_object=$3
   local snap_name=$4
   get_map_header $image_id 
   get_meta_header_seq $map_header_prefix $map_header_key
   get_image_metadata_v2 $meta_header_seq $snap_name
 }
 
-check_ceph_osd
+function flush_osd_journal()
+{
+  local func="flush_osd_journal"
+  init_env_osd $1
+  local osd_data_path=$osd_data
+  local osd_journal_path=$osd_data/journal 
+  local whoami_path=$osd_data/whoami
+  local host=`hostname`
+  if [ ! -e $osd_journal_path ]; then
+    echo "[$host]: $func: $osd_journal_path does not exist"
+    exit
+  fi
+  if [ ! -e $whoami_path ]; then
+    echo "[$host]: $func: $whoami_path does not exist"
+    exit
+  fi
+  local whoami=`cat $whoami_path`
+  echo "[$host]: $func for osd.$whoami ..."
+  #ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null  2>/dev/null
+  ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "[$host]: $func: flush osd journal failed"
+    exit
+  fi
+}
+
+#check_ceph_osd
 $*
