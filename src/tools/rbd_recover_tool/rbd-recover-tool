@@ -40,7 +40,7 @@ function scp_file()
   local func="scp_file"
   file=$1
   if [ "$1"x = ""x ];then
-    echo "$func: not file input"
+    echo "$func: missing parameter <file>"
     exit
   fi
   for host in `cat $osd_host`
@@ -69,34 +69,85 @@ function scp_files()
   echo "$func: finish"
 }
 
+function cleanup_env_nodes()
+{
+  local func="cleanup_env_nodes"
+  local host=
+  echo "$func: ..."
+
+  trap 'echo $func failed; exit' INT HUP
+  while IFS=$' \t\n' read -r host
+  do
+    # on each osd-node: cleanup the environment
+    echo "[$host]: osd-node -> cleanup environment"
+    cmd="rm -rf $job_path"
+    if [ $verbose ]; then
+	echo "[$host]: ssh $ssh_option $host $cmd"
+    fi
+    ssh $ssh_option $host $cmd &
+  done < $osd_host
+}
+
+function init_env_nodes()
+{
+  local func="init_env_nodes"
+  local host=
+  local lasthost=
+  local data_path=
+  echo "$func: ..."
+
+  trap 'echo $func failed; exit' INT HUP
+  while IFS=$' \t\n' read -r host data_path <&5
+  do
+    #host=`echo $line|awk '{print $1}'`
+    #data_path=`echo $line|awk '{print $2}'`
+
+    # on each osd-node: setup the environment
+    if [ "$host" != "$lasthost" ]; then
+      lasthost=$host
+
+      echo "[$host]: osd-node -> populate environment"
+      cmd="mkdir -p $job_path"
+      if [ $verbose ]; then
+	echo "[$host]: ssh $ssh_option $host $cmd"
+	echo "[$host]: scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path"
+      fi
+      ssh $ssh_option $host $cmd &&
+      scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path >/dev/null &
+      wait
+    fi
+  done 5< $osd_host_path
+  echo "$func: finished"
+}
+
 function scatter_node_jobs()
 {
   local func="scatter_node_jobs"
   local host=
   local data_path=
-  echo "$func: flush osd journal & generate infos: omap, pg, image metadata ..."
+  echo "$func: ..."
 
-  trap 'echo $func failed; exit' INT HUP
-  while read line
+  if [ $verbose ]; then
+    echo "$func: populate jobs and wait for end of their execution ..."
+  fi
+
+  while IFS=$' \t\n' read -r host data_path
   do
   {
-    host=`echo $line|awk '{print $1}'`
-    data_path=`echo $line|awk '{print $2}'`
-    check_osd_process $host
+    #host=`echo $line|awk '{print $1}'`
+    #data_path=`echo $line|awk '{print $2}'`
 
-    cmd="mkdir -p $job_path"
-    ssh $ssh_option $host $cmd
-    scp $ssh_option $file1 $host:$job_path  >/dev/null
-    scp $ssh_option $file2 $host:$job_path  >/dev/null
-    scp $ssh_option $file3 $host:$job_path  >/dev/null
-    scp $ssh_option $file4 $host:$job_path  >/dev/null
+    # check_osd_process $host
 
+    # on each osd-node: tasks to be run for any data-path
     cmd="bash $job_path/osd_job flush_osd_journal $data_path;"
     cmd="$cmd $job_path/osd_job do_omap_list $data_path;"
     cmd="$cmd bash $job_path/osd_job do_pg_epoch $data_path;"
-    cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"
-
-    ssh $ssh_option $host $cmd </dev/null
+    cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"  
+    ssh $ssh_option $host $cmd </dev/null      
+    #if [ $debug ]; then
+    #	echo "[$host]: ssh $ssh_option $host:$cmd"
+    #fi
   } &
   done < $osd_host_path
   wait
@@ -111,13 +162,13 @@ function gather_node_infos()
   >$image_coll_v1
   >$image_coll_v2
   trap 'echo $func failed; exit' INT HUP
-  while read line
+  while IFS=$' \t\n' read -r host data_path
   do
   {
-    host=`echo $line|awk '{print $1}'`
-    data_path=`echo $line|awk '{print $2}'`
-    echo "$func: $host"
-    check_osd_process $host
+    #host=`echo $line|awk '{print $1}'`
+    #data_path=`echo $line|awk '{print $2}'`
+    echo "$func: processing ceph-node $host"
+    #check_osd_process $host
 
     #pg epoch
     cmd1="bash $job_path/osd_job cat_pg_epoch $data_path"
@@ -138,11 +189,11 @@ function scatter_gather()
 {
   local func="scatter_gather"
   if [ ! -s $osd_host ];then
-    echo "$func: no osd_host input"
+    echo "$func: missing input parameter <osd_host>"
     exit
   fi
   if [ ! -s $mon_host ];then
-    echo "$func: no mon_host input"
+    echo "$func: missing input parameter <mon_host>"
     exit
   fi
   scatter_node_jobs
@@ -152,6 +203,18 @@ function scatter_gather()
 
 #------------- operations --------------
 
+function init()
+{
+    init_env_admin
+    init_env_nodes
+}
+
+function cleanup()
+{
+    cleanup_env_nodes
+    cleanup_env_admin
+}
+
 function database()
 {
   scatter_gather
@@ -160,16 +223,19 @@ function database()
 
 function list()
 {
+  init_env_nodes
   list_images
 }
 
 function lookup()
 {
+  init_env_nodes
   lookup_image $1 $2 $3
 }
 
 function recover()
 {
+  init_env_nodes
   recover_image $1 $2 $3 $4
 }
 
@@ -238,21 +304,29 @@ function admin_cmd()
     exit
   fi
   
-  if [ "$1"x = "database"x ];then
+  if [ "$1"x = "init"x ];then
     if [ $# -gt 1 ];then
       usage
       exit
     fi
     # remove osd_host to refresh osd_host and osd_host_mapping
     rm -f $osd_host
-    init_env_admin
-    database
+    init_env
+  elif [ "$1"x = "database"x ];then
+    if [ $# -gt 1 ];then
+      usage
+      exit
+    fi
+    # remove osd_host to refresh osd_host and osd_host_mapping
+    #rm -f $osd_host
+    #init_env
+    create_database
   elif [ "$1"x = "list"x ];then
     if [ $# -gt 1 ];then
       usage
       exit
     fi
-    init_env_admin
+    #init_env
     list
   elif [ "$1"x = "lookup"x ];then
     if [ $# -gt 2 ];then
@@ -273,7 +347,23 @@ function admin_cmd()
       echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
       exit
     fi
-    init_env_admin
+    #init_env
+    lookup $pool_id $image_name $snap_name
+    local pool_id=-1
+    local image_name=
+    local snap_name=
+    if [[ $2 =~  ^([^@/]+)/([^@/]+)$ ]];then
+      pool_id="${BASH_REMATCH[1]}"
+      image_name="${BASH_REMATCH[2]}"
+    elif [[ $2 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
+      pool_id="${BASH_REMATCH[1]}"
+      image_name="${BASH_REMATCH[2]}"
+      snap_name="${BASH_REMATCH[3]}"
+    else
+      echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
+      exit
+    fi
+    #init_env
     lookup $pool_id $image_name $snap_name
   elif [ "$1"x = "recover"x ];then
     if [ $# -lt 2 ] || [ $# -gt 3 ];then
@@ -305,7 +395,7 @@ function admin_cmd()
         exit
       fi
     fi
-    init_env_admin
+    #init_env
     recover $pool_id $image_name $snap_name $image_dir
   elif [ "$1"x = "scp_files"x ];then
     if [ $# -gt 1 ];then
@@ -319,6 +409,11 @@ function admin_cmd()
     fi
     admin_parse_osd
     scp_file $2
+  elif [ "$1"x = "cleanup"x ];then
+    if [ $# -gt 1 ];then
+      exit
+    fi
+    cleanup_env
   else
     echo "$func: $1: command not found"
   fi
