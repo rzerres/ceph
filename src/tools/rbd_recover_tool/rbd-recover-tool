@@ -1,7 +1,8 @@
 #!/bin/bash
 # file: rbd-recover-tool
 #
-# Copyright (C) 2015 Ubuntu Kylin
+# Extended: Ralf Zerres <ralf.zerres@networkx.de>
+# Copyright (C) 2015-2017 Ubuntu Kylin
 #
 # Author: Min Chen <minchen@ubuntukylin.com>
 #

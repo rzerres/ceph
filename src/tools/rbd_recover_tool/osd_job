@@ -1,9 +1,10 @@
 #!/bin/bash
 # file: osd_job
 #
-# Copyright (C) 2015 Ubuntu Kylin
+# Copyright (C) 2015-2017 Ubuntu Kylin
 #
-# Author: Min Chen <minchen@ubuntukylin.com>
+# Author:   Min Chen <minchen@ubuntukylin.com>
+# Extended: Ralf Zerres <ralf.zerres@networkx.de>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Library Public License as published by
