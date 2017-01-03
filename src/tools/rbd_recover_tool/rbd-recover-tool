@@ -20,18 +20,7 @@
 # when ceph cluster is stopped.
 # it is a simple disater recovery policy, just for urgent condition
 
-my_dir=$(dirname "$0")
-
-. $my_dir/common_h
-. $my_dir/metadata_h
-. $my_dir/epoch_h
-. $my_dir/database_h
-
-#scp files from admin node to osd node
-file1=common_h
-file2=metadata_h
-file3=epoch_h
-file4=osd_job
+version=1.01
 
 #------------ admin node's action -------------
 
@@ -241,39 +230,6 @@ function recover()
 
 #------------- helper -------------
 
-function usage()
-{
-  local cmd_name="rbd-recover-tool"
-  echo 
-  echo "$cmd_name is used to recover rbd image of replicated pool, 
-	when all ceph services are stopped"
-  echo "Usage:"
-  echo "$cmd_name database
-		 	gather pg info, object info, image metadata, 
-		 	and epoch info from all osd nodes,
-		    	this will cosume a long time, just be patient, 
-			especially when scale up to 1000+ osds"
-  echo "$cmd_name list
-		    	list all rbd images of all replicated pools, 
-			before to lookup & recover"
-  echo "$cmd_name lookup  <pool_id>/<image_name>[@[<snap_name>]]
-		    	show image metadata: image format, rbd id, size, order, snapseq
-			In addtion, for image with snapshots, 
-			this will list all snapshot infomations"
-  echo "$cmd_name recover <pool_id>/<image_name>[@[<snap_name>]] [</path/to/store/image>]
-			all snapshots share one image head, to economize disk space
-			so there is only one snapshot at any time,
-			image is saved at </path/to/store/image>/pool_<pool_id>/image_name/image_name
-			cat <path/to/store/image>/pool_<pool_id>/image_name/@CURRENT,
-			will show snapid
-		    	recover to raw image/nosnap/head: <image_name>
-	            	rollback to image head:           <image_name>@
-	            	rollback to image snap:           <image_name>@<snap_name>
-			recover steps:
-			1. recover image nosnap (only one time)
-			2. rollback to image snap"
-}
-
 function get_path()
 {
   local func="get_path"
@@ -292,131 +248,264 @@ function get_path()
   fi
 }
 
-function admin_cmd()
-{
-  local func="admin_cmd"
-  if [ $# -lt 1 ];then
-    usage
-    exit
-  fi
-  if [ "$1"x = "-h"x ] || [ "$1"x = "--help"x ];then
-    usage
-    exit
-  fi
-  
-  if [ "$1"x = "init"x ];then
-    if [ $# -gt 1 ];then
-      usage
-      exit
-    fi
-    # remove osd_host to refresh osd_host and osd_host_mapping
-    rm -f $osd_host
-    init_env
-  elif [ "$1"x = "database"x ];then
-    if [ $# -gt 1 ];then
-      usage
-      exit
-    fi
-    # remove osd_host to refresh osd_host and osd_host_mapping
-    #rm -f $osd_host
-    #init_env
-    create_database
-  elif [ "$1"x = "list"x ];then
-    if [ $# -gt 1 ];then
-      usage
-      exit
-    fi
-    #init_env
-    list
-  elif [ "$1"x = "lookup"x ];then
-    if [ $# -gt 2 ];then
-      usage
-      exit
-    fi
-    local pool_id=-1
-    local image_name=
-    local snap_name=
-    if [[ $2 =~  ^([^@/]+)/([^@/]+)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-    elif [[ $2 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-      snap_name="${BASH_REMATCH[3]}"
-    else
-      echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
-      exit
-    fi
-    #init_env
-    lookup $pool_id $image_name $snap_name
-    local pool_id=-1
-    local image_name=
-    local snap_name=
-    if [[ $2 =~  ^([^@/]+)/([^@/]+)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-    elif [[ $2 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-      snap_name="${BASH_REMATCH[3]}"
-    else
-      echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
-      exit
-    fi
-    #init_env
-    lookup $pool_id $image_name $snap_name
-  elif [ "$1"x = "recover"x ];then
-    if [ $# -lt 2 ] || [ $# -gt 3 ];then
-      usage
-      exit
-    fi
-    local pool_id=-1
-    local image_name=
-    local snap_name=@
-    local image_dir=
-    if [[ $2 =~  ^([^@/]+)/([^@/]+)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-    elif [[ $2 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
-      pool_id="${BASH_REMATCH[1]}"
-      image_name="${BASH_REMATCH[2]}"
-      snap_name="${BASH_REMATCH[3]}"
-      if [ "$snap_name"x = ""x ];then
-        snap_name=@@
+function parse_mode_args () {
+  local func="get_path"
+
+  # check positional parameters for given mode
+  case $mode in
+    "lookup")
+      pool_id=-1
+      image_name=
+      snap_name=
+      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
+	pool_id="${BASH_REMATCH[1]}"
+	image_name="${BASH_REMATCH[2]}"
+      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
+        pool_id="${BASH_REMATCH[1]}"
+	image_name="${BASH_REMATCH[2]}"
+	snap_name="${BASH_REMATCH[3]}"
+      else
+	echo "$func: $1 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
+	exit
       fi
-    else
-      echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
-      exit
-    fi
-    if [ $# = 3 ];then
-      image_dir=`get_path $3`
-      if [ "image_dir"x = ""x ];then
-        echo "$3 invalid"
-        exit
+      ;;
+    "recover")
+      pool_id=-1
+      image_name=
+      snap_name=@
+      image_dir=
+      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
+	pool_id="${BASH_REMATCH[1]}"
+	image_name="${BASH_REMATCH[2]}"
+      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
+	pool_id="${BASH_REMATCH[1]}"
+	image_name="${BASH_REMATCH[2]}"
+	snap_name="${BASH_REMATCH[3]}"
+	if [ "$snap_name"x = ""x ];then
+          snap_name=@@
+	fi
+      else
+	echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
+	exit
       fi
-    fi
-    #init_env
-    recover $pool_id $image_name $snap_name $image_dir
-  elif [ "$1"x = "scp_files"x ];then
-    if [ $# -gt 1 ];then
-      exit
-    fi
-    admin_parse_osd
-    scp_files
-  elif [ "$1"x = "scp_file"x ];then
-    if [ $# -gt 2 ];then
-      exit
-    fi
-    admin_parse_osd
-    scp_file $2
-  elif [ "$1"x = "cleanup"x ];then
-    if [ $# -gt 1 ];then
-      exit
-    fi
-    cleanup_env
-  else
-    echo "$func: $1: command not found"
+      if [ $# = 2 ];then
+        image_dfir=`get_path $3`
+	if [ "image_dir"x = ""x ];then
+          echo "$func: $2 invalid"
+          exit
+	fi
+      fi
+      ;;
+  esac
+}
+
+function parse_params () {
+  ###
+  # Evaluate given call parameters
+  ###
+
+  #test $# == 0 && usage
+  while :
+  do
+    case $1 in
+      -h | --help | \-\? | --usage)
+          #  Call usage() function.
+          usage
+          ;;
+      --admin-config-path=*)
+          config_path=${1#*=}
+          shift
+          ;;
+      --admin-image-path=*)
+          rbd_image=${1#*=}
+          shift
+          ;;
+      -d | --debug)
+          debug=1
+	  verbose=1
+          shift
+          ;;
+      -dry | --dryrun | --dry-run)
+          dryrun=1
+          shift
+          ;;
+      -m | --mode)
+          mode=$2
+	  if [ -z "$mode" ]; then
+	      echo "mode: no positional argument given."
+	      echo "      please try $progname --usage"
+	      exit 1
+	  else
+              shift 2
+	      parse_mode_args $1
+	  fi
+          ;;
+      --node-job-path=*)
+          job_path=${1#*=}
+          shift
+          ;;
+      --node-osd-path)
+          single_node=$2
+          shift 2
+          ;;
+      --mode=*)
+          mode=${1#*=}
+	  if [ -z "$mode" ]; then
+	      echo "mode: no positional argument given to operate on."
+	      echo "      please try $progname --usage"
+	      exit 1
+	  else
+              shift
+	      parse_mode_args $1
+	  fi
+          ;;
+      -v | --verbose)
+          verbose=1
+          shift
+          ;;
+      -V | --version)
+          version
+          shift
+          ;;
+      --) # End of all options
+          shift
+          break
+          ;;
+      -*)
+          echo "WARN: Unknown option (ignored): $1" >&2
+          #shift
+          exit 1
+          ;;
+      *)  # no more options. Stop while loop
+          break
+          ;;
+    esac
+  done
+
+  if [ $verbose ]; then
+      echo "Admin RBD Config-Path:    $config_path"
+      echo "Admin RBD Image-Path:     $images"
+      echo "Admin RBD Database-Path:  $database"
+      #echo "Admin RBD Image-Dir:      $image_dir"
+      echo "Node  OSD Job-Path:       $job_path"
+      echo "Node  OSD Data-Path:      $single_node"
+      echo "SSH   Options:            $ssh_option"
+
+      rbd_options="verbose=true";
+      if [ $debug ]; then rbd_options="${rbd_options} debug=true"; fi
+
+      echo "Options: ${rbd_options}"
+      echo "Mode:    $mode"
   fi
 }
 
-admin_cmd $*
+function usage () {
+  echo "usage: $progname ..."
+  echo
+  echo "Comand-line interface to recover Ceph RBD images of a given replicated pool.
+	Make sure to stop all ceph services an all involved ceph-nodes to
+        asure noninvasive side effects."
+  echo 
+  echo "Positional argument:"
+  echo "  -m | --mode <run type>"
+  echo "    cleanup
+		    	remove environment on admin-node
+			remove environment ond osd-nodes"
+  echo "    init
+			setup environment on admin-node
+                        check availability of needed tools on osd-odes
+                        check ceph structure on osd-nodes
+                        populate environment to osd-nodes"
+  echo "    database
+			gather pg info, object info, image metadata,
+		 	and epoch info from all osd nodes.
+		    	this will cosume a long time, just be patient ...
+			(especially when scale up to 1000+ osds)"
+  echo "    list
+		    	list all recognized rbd images in given replicated pools,
+			run this, before executing mode lookup or recover"
+  echo "    lookup  <pool_id>/<image_name>[@[<snap_name>]]
+		    	show image metadata: image format, rbd id, size, order, snapseq
+			In addtion, for image with snapshots, 
+			this will list all snapshot infomations"
+  echo "    recover <pool_id>/<image_name>[@[<snap_name>]] [</path/to/store/image>]
+			all snapshots share one image head, to economize disk space
+			so there is only one snapshot at any time,
+			image is saved at </path/to/store/image>/pool_<pool_id>/image_name/image_name
+			cat <path/to/store/image>/pool_<pool_id>/image_name/@CURRENT,
+			will show snapid
+		    	recover to raw image/nosnap/head: <image_name>
+	            	rollback to image head:           <image_name>@
+	            	rollback to image snap:           <image_name>@<snap_name>
+			recover steps:
+			1. recover image nosnap (only one time)
+			2. rollback to image snap"
+  echo "Optional arguments:"
+  echo "  --admin-config-path	location of config definitions"
+  echo "  --admin-image-path	destination-path storing collected rbd images"
+  echo "  --node-job-path	destination-path storing scripts to run on each osd-node"
+  echo "  --node-data-path	destination-path storing collected osd data"
+  echo "  -d | --debug		enable debug output"
+  echo "  -v | --debug		enable debug output"
+  exit 0
+}
+
+function version () {
+    echo "$progname version: $version"
+    exit 0
+}
+
+###
+# Main
+###
+
+progname=`basename $0`
+
+my_dir=$(dirname "$0")
+
+. $my_dir/common_h
+. $my_dir/metadata_h
+. $my_dir/epoch_h
+. $my_dir/database_h
+
+#scp files from admin node to osd node
+file1=$my_dir/common_h
+file2=$my_dir/metadata_h
+file3=$my_dir/epoch_h
+file4=$my_dir/osd_job
+
+#admin_cmd $*
+
+parse_params $@
+
+case $mode in
+  "init")
+    # rebuild node variables
+    rm -f $osd_host
+    # setup admin environment
+    init
+    ;;
+  "cleanup")
+    # remove osd_host to refresh osd_host and osd_host_mapping
+    cleanup
+    ;;
+  "database")
+    # remove osd_host to refresh osd_host and osd_host_mapping
+    #rm -f $osd_host
+    database
+    ;;
+  "list")
+    list
+    ;;
+  "lookup")
+    lookup $pool_id $image_name $snap_name
+    ;;
+  "recover")
+    #init_env
+    recover $pool_id $image_name $snap_name $image_dir
+    ;;
+esac
+
+###
+# EOF
+###
