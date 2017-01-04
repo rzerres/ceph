@@ -1,10 +1,10 @@
 #!/bin/bash
 # file: rbd-recover-tool
-#
-# Extended: Ralf Zerres <ralf.zerres@networkx.de>
-# Copyright (C) 2015-2017 Ubuntu Kylin
-#
+##
 # Author: Min Chen <minchen@ubuntukylin.com>
+# Extended: Ralf Zerres <ralf.zerres@networkx.de>
+#
+# Copyright (C) 2015-2017 Ubuntu Kylin
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Library Public License as published by
@@ -16,10 +16,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
-
-# rbd-recover-tool is an offline recover tool for rbd image in replicated pool
-# when ceph cluster is stopped.
-# it is a simple disater recovery policy, just for urgent condition
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# rbd-recover-tool is an offline recover tool for rbd objects
+# stored in replicated pools. It should be used, if all legal
+# restauration efforts to recover your ceph-pool did not work out.
+# rbd-recover-tool has a simple disater recovery policy, and is
+# designed to just overcome urgent condition
 
 version=1.01
 

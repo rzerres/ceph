@@ -16,6 +16,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# osd_job is the componet of rbd-recover-tool that runs on an osd-node.
+# The master process on the admin-node will take care to let this
+# file beeing copied via ssh to the involved osd-nodes
 
 my_dir=$(dirname "$0")
 
