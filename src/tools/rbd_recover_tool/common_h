@@ -120,24 +120,31 @@ function check_ceph_env()
 function init_env_osd()
 {
   local func="init_env_osd"
-  if [ "$1"x = ""x ];then
-      echo "$func: no osd_data_path input" 
-      exit
-  fi
+  local host=`hostname`
   osd_data=$1
+  if [ "$1"x = ""x ]; then
+    echo "$func: missing valid osd_data_path" 
+    exit
+  fi
+  local whoami_path=$osd_data/whoami
+  if [ ! -e $whoami_path ]; then
+    echo "[$host]: $func: $whoami_path does not exists"
+    exit
+  fi
+  local whoami=`cat $whoami_path`
   omap_path=$osd_data/current/omap
 
-  if [ ! -e $single_node ];then
-      mkdir -p $single_node
+  if [ ! -e $single_node ]; then
+    mkdir -p $single_node
   fi
 
   local osd_id=`gen_md5 $osd_data`
   local osd_dir=$single_node/$osd_id
 
-  if [ ! -e $osd_dir ];then
+  if [ ! -e $osd_dir ]; then
       mkdir -p $osd_dir
+      ln -s $osd_dir $single_node/osd.$whoami 
   fi
-  
   image_list_v1=$osd_dir/image_list_v1
   image_list_v2=$osd_dir/image_list_v2
   image_v1=$osd_dir/image_v1
@@ -147,74 +154,110 @@ function init_env_osd()
   omap_list=$osd_dir/omap_list
 }
 
+# admin node: cleanup the environment
+function cleanup_env_admin()
+{
+  local func="cleanup_env_admin" 
+  local pwd_path=`pwd`
+  osd_host_mapping=$pwd_path/config/osd_host_mapping
+  if [ ! -s $osd_host_path ]; then
+    echo "$func: config/osd_host_path not exists or empty"
+    exit
+  fi
+  if [ -e $rbd_image ]; then
+    rm -rf $rbd_image
+  fi
+  if [ -e $images ]; then
+    rm -rf $images
+  fi
+  if [ -e $osd_host ]; then
+    rm -f $osd_host
+  fi
+  if [ -e $osd_host_mapping ]; then
+    rm -f $osd_host_mapping
+  fi
+}
+
 # admin node process file: osd_host_path
 function init_env_admin()
 {
   local func="init_env_admin" 
   local pwd_path=`pwd`
   osd_host_mapping=$pwd_path/config/osd_host_mapping
-  if [ ! -s $osd_host_path ];then
+  if [ ! -s $osd_host_path ]; then
       echo "$func: config/osd_host_path not exists or empty"
       exit
   fi
-  if [ ! -e $rbd_image ];then
-      mkdir -p $rbd_image
+  if [ ! -e $rbd_image ]; then
+    mkdir -p $rbd_image
   fi
-  if [ ! -e $images ];then
-      mkdir -p $images
-  fi
-
-  if [ ! -s $mon_host ];then
-      echo "$func: config/mon_host not exists or empty"
-      exit
-  fi
-  if [ ! -e $mds_host ];then
-      echo "$func: config/mds_host not exists"
-      exit
+  if [ ! -e $images ]; then
+    mkdir -p $images
   fi
 
-  # we just judge if osd_host is needed to be updated
-  if [ -s $osd_host ] && [ $osd_host -nt $osd_host_path ];then
-      return  
+  if [ ! -s $mon_host ]; then
+    echo "$func: config/mon_host not exists or empty"
+    exit
   fi
-  echo "$func: create osd_host ..."
+  if [ ! -e $mds_host ]; then
+    echo "$func: config/mds_host not exists"
+    exit
+  fi
+
+  # only process, if osd_host_path has been updated recently
+  if [ -s $osd_host ] && [ $osd_host -nt $osd_host_path ]; then
+    return  
+  fi  
+  echo "$func: prepare client-side environment ..."
   # create file: osd_host and osd_host_mapping
   >$osd_host
   >$osd_host_mapping
   local lines=0
   local lineno=0
+
+  # serialize osd-node hostname checking
+  osd_host_path_sort $osd_host_path
+
+  local lastnode=
   while read line
   do
     lineno=$(($lineno + 1))
-    if [ "$line"x = ""x ];then
-	continue;
+    if [ "$line"x = ""x ]; then
+      continue;
     fi
     local node=`echo $line|awk '{print $1}'`
-    if [ "$node"x = ""x ];then
-	echo "$func: osd_host_path : line $lineno: osd hostname not input"
-	rm -rf $osd_host $osd_host_mapping
-	exit
+    if [ "$node"x = ""x ]; then
+      echo "$func: osd_host_path : line $lineno: missing parameter <hostname>"
+      rm -rf $osd_host $osd_host_mapping
+      exit
     fi
     local data_path=`echo $line|awk '{print $2}'`
-    if [ "$data_path"x = ""x ];then
-	echo "$func: osd_host_path : line $lineno: osd data_path not input"
-	rm -rf $osd_host $osd_host_mapping
-	exit
+    if [ "$data_path"x = ""x ]; then
+      echo "$func: osd_host_path : line $lineno: missing parameter <osd_data_path>"
+      rm -rf $osd_host $osd_host_mapping
+      exit
     fi
     lines=$(($lines + 1))
-    # in case : there are servral hostnames on the same node
-    # just need output of `hostname`
+    # if there are several hostnames for the same node
+    # we just need the output of `hostname`
     local hostname_alias=
-    hostname_alias=`ssh $ssh_option $node "hostname" 2>/dev/null </dev/null`
-    if [ "$hostname_alias"x = ""x ];then
-	echo "$func: osd_host_path: line $lineno: $node: get remote hostname alias failed"
+
+    if [ "$node"  != "$lastnode" ]; then
+      if [ $debug ]; then
+	  echo "$func: osd-node $node -> verify hostname, set hostname_alias"
+      fi
+      hostname_alias=`ssh $ssh_option $node "hostname" 2>/dev/null </dev/null`
+      if [ "$hostname_alias"x = ""x ]; then
+        echo "$func: osd_host_path: line $lineno: $node: failed to get alias for remote hostname"
 	rm -rf $osd_host $osd_host_mapping
 	exit
+      fi
+      echo "$node $hostname_alias" >>$osd_host_mapping
+      echo $node >> $osd_host
+      lastnode=$node
+      # check ceph env on remote osd
+      check_ceph_env $node $data_path
     fi
-    echo "$node $hostname_alias" >>$osd_host_mapping
-    echo $node >> $osd_host
-    # check ceph env on remote osd
-    check_ceph_env $node $data_path
   done < $osd_host_path
 
   if [ $lines = 0 ]; then
