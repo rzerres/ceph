@@ -37,7 +37,7 @@ image_name=
 function input_image()
 {
   local func="input_image"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: no image name input"
       exit
   fi
@@ -59,17 +59,17 @@ function get_image_list()
 function get_image_format_by_hobject()
 {
   local func="get_image_format"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       exit
   fi
   local res1=`cat $image_list_v1|grep $1`  
-  if [ "$res1"x != ""x ];then
+  if [ "$res1"x != ""x ]; then
       echo 1
       exit
   fi  
   
   local res2=`cat $image_list_v2|grep  $1`
-  if [ "$res2"x = ""x ];then
+  if [ "$res2"x = ""x ]; then
       echo 2
       exit
   fi
@@ -122,28 +122,28 @@ function get_image_format_by_hobject()
 function get_image_metadata_v1()
 {
   local func="get_image_metadata_v1"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: no image head object input"
       exit
   fi
   local snap_name=
-  if [ "$2"x != ""x ];then
+  if [ "$2"x != ""x ]; then
       snap_name=$2 
   fi
   
-  if [ ! -e $1 ];then
+  if [ ! -e $1 ]; then
       echo "$func: $1 not exists"
       exit
   fi
   local hobject_path=$1  
   d_hobject_path=`dump_backslash $1`
   local image_format=`get_image_format_by_hobject $d_hobject_path`
-  if [ $image_format != 1 ];then
+  if [ $image_format != 1 ]; then
       echo "$func: image_format must be 1"
       exit
   fi
   
-  if [ ! -e $hobject_path ];then
+  if [ ! -e $hobject_path ]; then
       echo "$func: $hobject_path not exists"
       exit
   fi
@@ -191,12 +191,12 @@ function get_image_metadata_v1()
   echo -e "\t\tID\tNAME\t\tSIZE"
   for ((i=0; i<$snap_count; i++))
   do
-    if [ "$snap_name"x = ""x ];then
+    if [ "$snap_name"x = ""x ]; then
 	echo -n -e "snapshot:\t"
 	echo -e "${snap_ids[$i]}\t${snap_names[$i]}\t\t${snap_image_sizes[$i]}"
 	continue
     fi
-    if [ "$snap_name"x = "${snap_names[$i]}"x ];then 
+    if [ "$snap_name"x = "${snap_names[$i]}"x ]; then 
 	echo -n -e "snapshot:\t"
 	echo -e "${snap_ids[$i]}\t${snap_names[$i]}\t\t${snap_image_sizes[$i]}"
 	return
@@ -223,12 +223,12 @@ function get_image_metadata_v1()
 function get_image_id()
 {
   local func="get_image_id"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       exit;
   fi
   local image_id_hobject=$1 #from admin node's database
 
-  if [ ! -e $image_id_hobject ];then
+  if [ ! -e $image_id_hobject ]; then
       echo "$func: given rados object id <$image_id_hobject> does not exist"
       exit;
   fi
@@ -248,14 +248,14 @@ function get_map_header()
 {
   local func="get_map_header"
   local image_id=$1
-  if [ "$image_id"x = ""x ];then
+  if [ "$image_id"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <image_id>"
       exit;
   fi
   map_header_prefix=`get_map_header_prefix`
   local keyword="header%e"$image_id
   map_header_key=`get_map_header_key $keyword`
-  if [ "$map_header_key"x = ""x ];then
+  if [ "$map_header_key"x = ""x ]; then
       echo "$func: map_header_key is NULL (not in omaplist)"
       exit
   fi
@@ -293,7 +293,7 @@ snap_seq=
 function get_image_metadata_v2()
 {
   local func="get_image_metadata_v2"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit;
   fi
@@ -336,7 +336,7 @@ function get_image_metadata_v2()
 function list_features_v2()
 {
   local func="list_features_v2"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
   fi
@@ -431,12 +431,12 @@ function list_snapshots_v2()
   # ......
 
   local func="list_snapshots_v2"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
   fi
   local sname=
-  if [ $# -eq 2 ];then
+  if [ $# -eq 2 ]; then
       sname=$2
   fi
   if [ $debug ]; then
@@ -496,11 +496,11 @@ function list_snapshots_v2()
       tmp="$tmp${arr[$i]}"
     done
     local image_size=$((16#$tmp))
-    if [ "$sname"x = ""x ];then
+    if [ "$sname"x = ""x ]; then
 	echo -e "snapshot:\t$snap_id\t$snap_name\t\t$image_size" 
 	continue
     fi
-    if [ "$sname"x = "$snap_name"x ];then
+    if [ "$sname"x = "$snap_name"x ]; then
 	echo -e "snapshot:\t$snap_id\t$snap_name\t\t$image_size" 
 	return
     fi
