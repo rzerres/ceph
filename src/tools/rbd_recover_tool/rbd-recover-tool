@@ -72,17 +72,24 @@ function cleanup_env_nodes()
   local host=
   echo "$func: ..."
 
-  trap 'echo $func failed; exit' INT HUP
-  while IFS=$' \t\n' read -r host
-  do
-    # on each osd-node: cleanup the environment
-    echo "[$host]: osd-node -> cleanup environment"
-    cmd="rm -rf $job_path"
+  if [ -r $osd_host ]; then
+      trap 'echo $func failed; exit' INT HUP
+      while IFS=$' \t\n' read -r host
+      do
+	# on each osd-node: cleanup the environment
+	echo "[$host]: osd-node -> cleanup environment"
+	cmd="rm -rf $job_path"
+	if [ $verbose ]; then
+	    echo "[$host]: ssh $ssh_option $host $cmd"
+	fi
+	ssh $ssh_option $host $cmd &
+      done < $osd_host
+  else
     if [ $verbose ]; then
-	echo "[$host]: ssh $ssh_option $host $cmd"
+	echo "$func: config file '$osd_host' already deleted!" 
     fi
-    ssh $ssh_option $host $cmd &
-  done < $osd_host
+  fi
+  
 }
 
 function init_env_nodes()
