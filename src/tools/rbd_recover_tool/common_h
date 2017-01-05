@@ -257,9 +257,9 @@ function init_env_admin()
       fi
       echo "$node $hostname_alias" >>$osd_host_mapping
       echo $node >> $osd_host
-      lastnode=$node
       # check ceph env on remote osd
       check_ceph_env $node $data_path
+      lastnode=$node
     fi
   done < $osd_host_path
 
