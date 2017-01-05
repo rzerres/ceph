@@ -264,8 +264,9 @@ function init_env_admin()
   done < $osd_host_path
 
   if [ $lines = 0 ]; then
-      echo "$func: no osd host path valid"
-      exit
+    echo "$func: invalid client setup"
+    echo "\tplease create valid configuration lines: <osd-node> <osd_data_path>"
+    exit
   fi
 }
 
@@ -364,8 +365,9 @@ function check_osd_process()
   local ret=/tmp/ret.$$$$
   ssh $ssh_option $host $cmds |tee $ret
   if [ -s $ret ]; then
-      echo "$func: [$host] ceph-osd process is not killed"
-      exit
+    echo "$func: [$host] ceph-osd process are still active!"
+    echo "$func: [$host] we will not proceed to keep intagrity"
+    exit
   fi
   rm -f $ret 
 }
@@ -379,26 +381,29 @@ function get_map_header_key()
 {
   local func="get_map_header_key"
   if [ "$1"x = ""x ]; then
-      #echo $func': no keyword input'
-      exit 
+    echo $func': missing parameter <key>'
+    exit 
   fi 
   local keyword=$1
   local res=`cat $omap_list| grep $keyword`
   if [ "$res"x = ""x ]; then
-      #echo "$func: map_header_key = $keyword not exisits"
-      exit
+      if [ $debug ]; then
+	  echo "$func: ceph-kvstore-tool key = $keyword does not exist"
+      fi
+    exit
   fi
   echo $res|awk -F ":" '{print $2}'
 }
 
 function get_header_seq() 
 {
+  #use ceph-kvstore-tool to extract seq-position
   local func="get_header_seq"
   if [ "$1"x == ""x ]; then
-      #echo "$func: no prefix input"
+      echo "$func: ceph-kvstore-tool missing parameter <prefix>"
       exit;
   elif [ "$2"x == ""x ]; then
-      #echo "$func: no key input"
+      echo "$func: ceph-kvstore-tool missing parameter <key>"
       exit;
   fi
   local prefix=$1;
