@@ -409,41 +409,50 @@ function get_header_seq()
   local prefix=$1;
   local key=$2;
   local res=/tmp/header_seq.$$$$
-
-  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
+  local hexseq
+  local seq
+  
+  # ceph-kvstore-tool dumps values in hex (big-endian format)
+  # ($prefix, $key)
+  # (_HOBJTOSEQ_, ...head.0.00000011)
+  # 00000000  02 01 81 00 00 00 87 e4  12 00 00 00 00 00 00 00
+  # relevant seq is coded in uint64: 8 bytes (big-endian):
+  # -> 00 00 00 00 00 87 E4 12
+  # => 12 e4 87 00 00 00 00 00 
+  # use xxd to process the hex dump
+  # finally transform the hex output to the needed integer
+  # header_seq = echo $((16#000000000012e487)) -> 1238151
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
   if [ $? != 0 ]; then
       #echo "$func: <$prefix , $key> not exists" ;
       exit;
   fi
-
-  # ceph-kvstore-tool get result like this:
-  # 02 01 7e 00 00 00 12 44 00 00 00 00 00 00 00 00
-  # get header seq bytes: 
-  # 12 44 00 00 00 00 00 00 
-  # -> 00 00 00 00 00 00 44 12 
-  # echo $((16#0000000000004412)) -> 17426 == header_seq
-  local seq=`cat $res |head -n 2|tail -n 1| \
-  awk '
-  BEGIN {
-    FS=":"
-    seq="";
-    i=7;
-  } {
-    split($2, arr, " ")  
-    # header_seq uint64 : 8 bytes
-    for (x=7; x>=0; --x) {
-      seq=seq""arr[i+x];
-   }
-  }
-  END {
-   print seq
-  }'`
+  #seq=`cat $res |head -n 2|tail -n 1| \
+  #awk '
+  #BEGIN {
+  #  FS="00000000";
+  #  seq="";
+  #  i=7;
+  #} {
+  #  split($2, arr, " "); 
+  #  # header_seq uint64 : 8 bytes
+  #  for (x=7; x>=0; --x) {
+  #    seq=seq""arr[i+x];
+  #  }
+  #}
+  #END {
+  # print seq
+  #}'`
+  # process dump: offset 6, switch next 8 octets to little endian 
+  hexseq=`xxd -c 16 -seek 6 -len 8 -e $res | \
+       awk 'BEGIN { -F ":" } { print $2; }'`
+  seq=`printf "%d" 0x$hexseq`
   if [ "$seq"x = ""x ]; then
       #echo "$func: get <$prefix , $key> failed"
       exit;
   fi
   rm -f $res
-  echo $((16#$seq))
+  echo $seq
 }
 
 # get header info key/value
