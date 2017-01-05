@@ -269,6 +269,22 @@ function init_env_admin()
   fi
 }
 
+function osd_host_path_sort()
+{
+    local osd_host_path=$1
+    local t_host_path=/tmp/tmp_osd_host_path.$$$$
+
+    if [ "$1"x = ""x ];then
+	echo "$func: missing parameter <osd_host_path>"
+	exit
+    fi
+
+    cat $osd_host_path | sort -t$'\t' -k 1.1,1 -k 2.24,2.26nr > $t_host_path
+    cp $t_host_path $osd_host_path
+    rm $t_host_path
+}
+ 
+
 function admin_parse_osd()
 {
   local func="admin_parse_osd"
