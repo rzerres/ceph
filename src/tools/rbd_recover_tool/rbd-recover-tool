@@ -1,3 +1,6 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 # file: rbd-recover-tool
 ##
@@ -34,15 +37,15 @@ function scp_file()
   local func="scp_file"
   file=$1
   if [ "$1"x = ""x ];then
-    echo "$func: missing parameter <file>"
-    exit
+      echo "$func: missing parameter <file>"
+      exit
   fi
   for host in `cat $osd_host`
   do
-  {
-    echo "$func: $host"
-    scp $ssh_option $file $host:$job_path  1>/dev/null
-  } &
+    {
+      echo "$func: $host"
+      scp $ssh_option $file $host:$job_path  1>/dev/null
+    } &
   done
 }
 
@@ -51,13 +54,13 @@ function scp_files()
   local func="scp_files"
   for host in `cat $osd_host`
   do
-  {
-    echo "$func: $host"
-    scp $ssh_option $file1 $host:$job_path
-    scp $ssh_option $file2 $host:$job_path
-    scp $ssh_option $file3 $host:$job_path
-    scp $ssh_option $file4 $host:$job_path
-  } &
+    {
+      echo "$func: $host"
+      scp $ssh_option $file1 $host:$job_path
+      scp $ssh_option $file2 $host:$job_path
+      scp $ssh_option $file3 $host:$job_path
+      scp $ssh_option $file4 $host:$job_path
+    } &
   done
   wait
   echo "$func: finish"
@@ -98,17 +101,17 @@ function init_env_nodes()
 
     # on each osd-node: setup the environment
     if [ "$host" != "$lasthost" ]; then
-      lasthost=$host
+	lasthost=$host
 
-      echo "[$host]: osd-node -> populate environment"
-      cmd="mkdir -p $job_path"
-      if [ $verbose ]; then
-	echo "[$host]: ssh $ssh_option $host $cmd"
-	echo "[$host]: scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path"
-      fi
-      ssh $ssh_option $host $cmd &&
-      scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path >/dev/null &
-      wait
+	echo "[$host]: osd-node -> populate environment"
+	cmd="mkdir -p $job_path"
+	if [ $verbose ]; then
+	    echo "[$host]: ssh $ssh_option $host $cmd"
+	    echo "[$host]: scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path"
+	fi
+	ssh $ssh_option $host $cmd &&
+	    scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path >/dev/null &
+	wait
     fi
   done 5< $osd_host_path
   echo "$func: finished"
@@ -122,27 +125,27 @@ function scatter_node_jobs()
   echo "$func: ..."
 
   if [ $verbose ]; then
-    echo "$func: populate jobs and wait for end of their execution ..."
+      echo "$func: populate jobs and wait for end of their execution ..."
   fi
 
   while IFS=$' \t\n' read -r host data_path
   do
-  {
-    #host=`echo $line|awk '{print $1}'`
-    #data_path=`echo $line|awk '{print $2}'`
+    {
+      #host=`echo $line|awk '{print $1}'`
+      #data_path=`echo $line|awk '{print $2}'`
 
-    # check_osd_process $host
+      # check_osd_process $host
 
-    # on each osd-node: tasks to be run for any data-path
-    cmd="bash $job_path/osd_job flush_osd_journal $data_path;"
-    cmd="$cmd $job_path/osd_job do_omap_list $data_path;"
-    cmd="$cmd bash $job_path/osd_job do_pg_epoch $data_path;"
-    cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"  
-    ssh $ssh_option $host $cmd </dev/null      
-    #if [ $debug ]; then
-    #	echo "[$host]: ssh $ssh_option $host:$cmd"
-    #fi
-  } &
+      # on each osd-node: tasks to be run for any data-path
+      cmd="bash $job_path/osd_job flush_osd_journal $data_path;"
+      cmd="$cmd $job_path/osd_job do_omap_list $data_path;"
+      cmd="$cmd bash $job_path/osd_job do_pg_epoch $data_path;"
+      cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"  
+      ssh $ssh_option $host $cmd </dev/null      
+      #if [ $debug ]; then
+      #	echo "[$host]: ssh $ssh_option $host:$cmd"
+      #fi
+    } &
   done < $osd_host_path
   wait
   echo "$func: finish"
@@ -158,22 +161,22 @@ function gather_node_infos()
   trap 'echo $func failed; exit' INT HUP
   while IFS=$' \t\n' read -r host data_path
   do
-  {
-    #host=`echo $line|awk '{print $1}'`
-    #data_path=`echo $line|awk '{print $2}'`
-    echo "$func: processing ceph-node $host"
-    #check_osd_process $host
+    {
+      #host=`echo $line|awk '{print $1}'`
+      #data_path=`echo $line|awk '{print $2}'`
+      echo "$func: processing ceph-node $host"
+      #check_osd_process $host
 
-    #pg epoch
-    cmd1="bash $job_path/osd_job cat_pg_epoch $data_path"
-    ssh $ssh_option $host $cmd1 >> $pg_coll
-    #image v1
-    cmd2="bash $job_path/osd_job cat_image_v1 $data_path"
-    ssh $ssh_option $host $cmd2 >> $image_coll_v1
-    #image v2
-    cmd3="bash $job_path/osd_job cat_image_v2 $data_path"
-    ssh $ssh_option $host $cmd3 >> $image_coll_v2
-  } &
+      #pg epoch
+      cmd1="bash $job_path/osd_job cat_pg_epoch $data_path"
+      ssh $ssh_option $host $cmd1 >> $pg_coll
+      #image v1
+      cmd2="bash $job_path/osd_job cat_image_v1 $data_path"
+      ssh $ssh_option $host $cmd2 >> $image_coll_v1
+      #image v2
+      cmd3="bash $job_path/osd_job cat_image_v2 $data_path"
+      ssh $ssh_option $host $cmd3 >> $image_coll_v2
+    } &
   done < $osd_host_path
   wait
   echo "$func: finish"
@@ -183,12 +186,12 @@ function scatter_gather()
 {
   local func="scatter_gather"
   if [ ! -s $osd_host ];then
-    echo "$func: missing input parameter <osd_host>"
-    exit
+      echo "$func: missing input parameter <osd_host>"
+      exit
   fi
   if [ ! -s $mon_host ];then
-    echo "$func: missing input parameter <mon_host>"
-    exit
+      echo "$func: missing input parameter <mon_host>"
+      exit
   fi
   scatter_node_jobs
   gather_node_infos
@@ -199,14 +202,14 @@ function scatter_gather()
 
 function init()
 {
-    init_env_admin
-    init_env_nodes
+  init_env_admin
+  init_env_nodes
 }
 
 function cleanup()
 {
-    cleanup_env_nodes
-    cleanup_env_admin
+  cleanup_env_nodes
+  cleanup_env_admin
 }
 
 function database()
@@ -239,15 +242,15 @@ function get_path()
 {
   local func="get_path"
   if [ $# -lt 1 ];then
-    return
+      return
   fi
   if [[ $1 =~ // ]];then
-    return # "/path//to" is invalid
+      return # "/path//to" is invalid
   fi
   local parent=`dirname $1`
   local name=`basename $1`
   if [ "$parent"x = "/"x ];then
-    echo "$parent$name"
+      echo "$parent$name"
   else
     echo -n "$parent/$name"
   fi
@@ -263,12 +266,12 @@ function parse_mode_args () {
       image_name=
       snap_name=
       if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
-	pool_id="${BASH_REMATCH[1]}"
-	image_name="${BASH_REMATCH[2]}"
+	  pool_id="${BASH_REMATCH[1]}"
+	  image_name="${BASH_REMATCH[2]}"
       elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
-        pool_id="${BASH_REMATCH[1]}"
-	image_name="${BASH_REMATCH[2]}"
-	snap_name="${BASH_REMATCH[3]}"
+          pool_id="${BASH_REMATCH[1]}"
+	  image_name="${BASH_REMATCH[2]}"
+	  snap_name="${BASH_REMATCH[3]}"
       else
 	echo "$func: $1 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
 	exit
@@ -280,25 +283,25 @@ function parse_mode_args () {
       snap_name=@
       image_dir=
       if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
-	pool_id="${BASH_REMATCH[1]}"
-	image_name="${BASH_REMATCH[2]}"
+	  pool_id="${BASH_REMATCH[1]}"
+	  image_name="${BASH_REMATCH[2]}"
       elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
-	pool_id="${BASH_REMATCH[1]}"
-	image_name="${BASH_REMATCH[2]}"
-	snap_name="${BASH_REMATCH[3]}"
-	if [ "$snap_name"x = ""x ];then
-          snap_name=@@
-	fi
+	  pool_id="${BASH_REMATCH[1]}"
+	  image_name="${BASH_REMATCH[2]}"
+	  snap_name="${BASH_REMATCH[3]}"
+	  if [ "$snap_name"x = ""x ];then
+              snap_name=@@
+	  fi
       else
 	echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
 	exit
       fi
       if [ $# = 2 ];then
-        image_dfir=`get_path $3`
-	if [ "image_dir"x = ""x ];then
-          echo "$func: $2 invalid"
-          exit
-	fi
+          image_dfir=`get_path $3`
+	  if [ "image_dir"x = ""x ];then
+              echo "$func: $2 invalid"
+              exit
+	  fi
       fi
       ;;
   esac
@@ -314,76 +317,76 @@ function parse_params () {
   do
     case $1 in
       -h | --help | \-\? | --usage)
-          #  Call usage() function.
-          usage
-          ;;
+        #  Call usage() function.
+        usage
+        ;;
       --admin-config-path=*)
-          config_path=${1#*=}
-          shift
-          ;;
+        config_path=${1#*=}
+        shift
+        ;;
       --admin-image-path=*)
-          rbd_image=${1#*=}
-          shift
-          ;;
+        rbd_image=${1#*=}
+        shift
+        ;;
       -d | --debug)
-          debug=1
-	  verbose=1
-          shift
-          ;;
+        debug=1
+	verbose=1
+        shift
+        ;;
       -dry | --dryrun | --dry-run)
-          dryrun=1
-          shift
-          ;;
+        dryrun=1
+        shift
+        ;;
       -m | --mode)
-          mode=$2
-	  if [ -z "$mode" ]; then
-	      echo "mode: no positional argument given."
-	      echo "      please try $progname --usage"
-	      exit 1
-	  else
-              shift 2
-	      parse_mode_args $1
-	  fi
-          ;;
-      --node-job-path=*)
-          job_path=${1#*=}
-          shift
-          ;;
-      --node-osd-path)
-          single_node=$2
+        mode=$2
+	if [ -z "$mode" ]; then
+	    echo "mode: no positional argument given."
+	    echo "      please try $progname --usage"
+	    exit 1
+	else
           shift 2
-          ;;
+	  parse_mode_args $1
+	fi
+        ;;
+      --node-job-path=*)
+        job_path=${1#*=}
+        shift
+        ;;
+      --node-osd-path)
+        single_node=$2
+        shift 2
+        ;;
       --mode=*)
-          mode=${1#*=}
-	  if [ -z "$mode" ]; then
-	      echo "mode: no positional argument given to operate on."
-	      echo "      please try $progname --usage"
-	      exit 1
-	  else
-              shift
-	      parse_mode_args $1
-	  fi
-          ;;
+        mode=${1#*=}
+	if [ -z "$mode" ]; then
+	    echo "mode: no positional argument given to operate on."
+	    echo "      please try $progname --usage"
+	    exit 1
+	else
+          shift
+	  parse_mode_args $1
+	fi
+        ;;
       -v | --verbose)
-          verbose=1
-          shift
-          ;;
+        verbose=1
+        shift
+        ;;
       -V | --version)
-          version
-          shift
-          ;;
+        version
+        shift
+        ;;
       --) # End of all options
-          shift
-          break
-          ;;
+        shift
+        break
+        ;;
       -*)
-          echo "WARN: Unknown option (ignored): $1" >&2
-          #shift
-          exit 1
-          ;;
+        echo "WARN: Unknown option (ignored): $1" >&2
+        #shift
+        exit 1
+        ;;
       *)  # no more options. Stop while loop
-          break
-          ;;
+        break
+        ;;
     esac
   done
 
@@ -456,8 +459,8 @@ function usage () {
 }
 
 function version () {
-    echo "$progname version: $version"
-    exit 0
+  echo "$progname version: $version"
+  exit 0
 }
 
 ###

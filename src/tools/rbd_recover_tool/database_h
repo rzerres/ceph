@@ -1,3 +1,6 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 # file: database_h
 #
@@ -52,7 +55,7 @@ function gen_database()
       host=`echo $line|awk '{print $1}'`
       data_path=`echo $line|awk '{print $2}'`
       if [ "$host"x = ""x ] || [ "$data_path"x = ""x ]; then
- 	continue
+ 	  continue
       fi
       local whoami
       local cmd1="cat $data_path/whoami"
@@ -75,8 +78,8 @@ function gather_hobject_common()
 
   trap 'echo $func failed; exit;' INT HUP
   if [ $# -lt 2 ]; then
-    echo "$func: parameters: <pool_id> <image_prefix> [<snap_id>]"  
-    exit
+      echo "$func: parameters: <pool_id> <image_prefix> [<snap_id>]"  
+      exit
   fi
 
   local pool_id=$1
@@ -89,10 +92,10 @@ function gather_hobject_common()
   local psuffix=
   local fsuffix="_head"
   if [ $# = 3 ]; then
-    snap_id=$(($3))
-    hex_snap_id=`printf "%x" $snap_id`
-    psuffix="_"$snap_id
-    fsuffix="_"$snap_id
+      snap_id=$(($3))
+      hex_snap_id=`printf "%x" $snap_id`
+      psuffix="_"$snap_id
+      fsuffix="_"$snap_id
   fi
   local underline_image_prefix=`convert_underline $image_prefix`
   local dump_image_prefix=`dump_backslash $underline_image_prefix`
@@ -105,11 +108,11 @@ function gather_hobject_common()
   local image_hobjects_stable=$image_hobjects_dir/$image_prefix"$fsuffix"
 
   if [ ! -e $images_raw_dir ]; then
-    mkdir -p $images_raw_dir
+      mkdir -p $images_raw_dir
   fi
   if [ ! -e $image_hobjects_dir ]; then
-  local image_metadata=$images_meta/$image_name_in
-    mkdir -p $image_hobjects_dir
+      local image_metadata=$images_meta/$image_name_in
+      mkdir -p $image_hobjects_dir
   fi
 
   pushd $database >/dev/null
@@ -117,8 +120,8 @@ function gather_hobject_common()
   >$image_hobjects_raw
   grep -r -E $dump_image_prefix""$pattern * >$image_hobjects_raw
   if [ ! -s $image_hobjects_raw ]; then
-    echo "$func: image snap [ $image_prefix"$psuffix" ] is empty"
-    return 1 #no data available
+      echo "$func: image snap [ $image_prefix"$psuffix" ] is empty"
+      return 1 #no data available
   fi
   popd >/dev/null
 
@@ -132,7 +135,7 @@ function gather_hobject_common()
   local tmp_image=$offset_dir_temp/tmpimage.$$$$
   >$tmp_image
   cat $image_hobjects_raw | 
-  awk -F ':' '
+      awk -F ':' '
   BEGIN {
     pg_coll="'$pg_coll'"
     tmp_image="'$tmp_image'"
@@ -168,7 +171,7 @@ function gather_hobject_common()
       #system("awk  \"\\$1 == \\\""node"\\\" && \\$2 == \\\""pgid"\\\" && \\$4 == \\\""data_path"\\\" {print \\$3}\" "pg_coll);
   }'
   if [ $debug ]; then
-    echo "$func: tmp_image -> $tmp_image"  
+      echo "$func: tmp_image -> $tmp_image"  
   fi
 
   local sort_image=$offset_dir_temp/sortimage.$$$$
@@ -218,8 +221,8 @@ function lookup_image()
   pool_id=$((pool_id))
   echo -e "$func: pool_id='$pool_id'; image_name='$image_name; snap_name='$snap_name'"
   if [ $pool_id -lt 0 ]; then
-    echo "$func: pool_id must be great than zero"
-    exit
+      echo "$func: pool_id must be great than zero"
+      exit
   fi
   local hex_pool_id=`printf "%x" $pool_id`
   input_image $image_name
@@ -239,33 +242,33 @@ function lookup_image()
   {
     cat $image_coll_v1|grep -E "/$img_name\.rbd__head_[0-9A-F]{8}__$hex_pool_id" >$res1
     if [ -s $res1 ]; then
-      echo "$func: rbd-object-v1"
-      echo -n "$func: image_id_hobject = "
-      choose_epoch $res1| tee $item
-      #choose_epoch $res1 > $item
-      
-      if [ -e $item ]; then
-        node=`cat $item|awk '{print $1}'`
-        image_id_hobject=`cat $item|awk '{print $2}'`
-        if [ "$node"x = ""x ]; then
-    	  echo "$func: rbd-object-v1 -> missing <node>"
- 	  exit
+	echo "$func: rbd-object-v1"
+	echo -n "$func: image_id_hobject = "
+	choose_epoch $res1| tee $item
+	#choose_epoch $res1 > $item
+	
+	if [ -e $item ]; then
+            node=`cat $item|awk '{print $1}'`
+            image_id_hobject=`cat $item|awk '{print $2}'`
+            if [ "$node"x = ""x ]; then
+    		echo "$func: rbd-object-v1 -> missing <node>"
+ 		exit
+	    fi
+	    if [ "$image_id_hobject"x = ""x ]; then
+		echo "$func: rbd-object-v1 -> missing <image_id_hobject>"
+		exit
+  	    fi
+            rm -f $item
 	fi
-	if [ "$image_id_hobject"x = ""x ]; then
-	  echo "$func: rbd-object-v1 -> missing <image_id_hobject>"
-	  exit
-  	fi
-        rm -f $item
-      fi
 
-      image_format=1
-      echo -e "image_name:\t$image_name_in"
-      echo -e "image_format:\t$image_format"
-      data_path=`echo $image_id_header_hobject|awk -F "/current" '{print $1}'`
- 
-      >$result
-      cmds="bash $job_path/osd_job do_image_metadata_v1 $data_path `dump_backslash $image_id_header_hobject` $snap_name" 
-      ssh $ssh_option $node $cmds | tee $result
+	image_format=1
+	echo -e "image_name:\t$image_name_in"
+	echo -e "image_format:\t$image_format"
+	data_path=`echo $image_id_header_hobject|awk -F "/current" '{print $1}'`
+	
+	>$result
+	cmds="bash $job_path/osd_job do_image_metadata_v1 $data_path `dump_backslash $image_id_header_hobject` $snap_name" 
+	ssh $ssh_option $node $cmds | tee $result
     fi
   }
 
@@ -273,220 +276,220 @@ function lookup_image()
   {
     cat $image_coll_v2|grep -E "/rbd\\\\uid\."$img_name"__head_[0-9A-F]{8}__$hex_pool_id" >$res2
     if [ -s $res2 ]; then
-      echo "$func: rbd-object-v2"
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> get image_id_hobject for given image-name ..."
-      fi
-      #choose_epoch $res2 | tee $item
-      choose_epoch $res2 > $item
-
-      if [ -e $item ]; then
-        node=`cat $item|awk '{print $1}'`
-        image_id_hobject=`cat $item|awk '{print $2}'`
-        if [ "$node"x = ""x ]; then
-    	  echo "$func: rbd-object-v2 -> missing 'node'"
- 	  exit
-	fi
-	if [ "$image_id_hobject"x = ""x ]; then
-	  echo "$func: rbd-object-v2 -> missing 'image_id_hobject'"
-	  exit
-  	fi
-        rm -f $item
-      fi
-
-      check_osd_process $node
-
-      local tid=/tmp/image_id.$$$$
-      data_path=`echo $image_id_hobject|awk -F "/current" '{print $1}'`
-      >$tid
-      cmds="bash $job_path/osd_job do_image_id $data_path `dump_backslash $image_id_hobject`" 
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> get matching image-id"
-	echo "$func: rbd-object-v2 -> ssh $ssh_optoin $node $cmds"
-      fi
-      ssh $ssh_option $node $cmds > $tid
-
-      local image_id=`cat $tid`
-      rm -f $tid
-      if [ $verbose ]; then
-	echo "$func: rbd-object-v2 -> image_id='$image_id'"
-      fi
-
-      # get image_hobject
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> get image_hobject ..."
-      fi
-
-      # database: filename = osd-node (hostname)
-      #           contents = path to object references
-      # pattern:  header information for given image_id
-      # tcoll:    list of hostnames containing pgid's of requested image_id
-      pushd $database >/dev/null
-      local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
-      local tcoll=/tmp/tmp_image_head_coll.$$$$
-      if [ $verbose ]; then
-	echo "$func: rbd-object-v2 -> image header search-pattern='$pattern'"
-      fi
-      # we need the grep to include the filename = node for any match
-      grep --with-filename -E $pattern * >$tcoll
-      popd >/dev/null
-
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> get image_hobject with highest pg_epoch for given image-name ..."
-      fi
-      # split up fields from osd-node elements found in database files
-      local t_host=(`cat $tcoll|awk -F ":" '{print $1}'`)
-      local t_pgid=(`cat $tcoll|awk -F ":" '{print $2}'|sed -n 's/.*\/\([0-9a-fA-F]\+\.[0-9a-fA-F]\+\)_head\/.*/\1/p'`)
-      local t_hobject=(`cat $tcoll|awk -F ":" '{print $2}'`)
-      local t_data_path=(`cat $tcoll|awk -F ":" '{split($2, arr, "/current/"); print arr[1];}'`)
-      rm -f $tcoll
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> target hostname from config-file (t_host): ${t_host}"
-	echo "$func: rbd-object-v2 -> target id of placement group (t_pgid):     ${t_pgid}"
-	echo "$func: rbd-object-v2 -> target name of header object (t_hobject):  ${t_hobject}"
-	echo "$func: rbd-object-v2 -> target data path for object (t_data_path): ${t_data_path}"
-      fi
-
-      # the replicated-pool (pool_id) has an associated replication number (attribute: size)
-      # successfull processing of its associated crush-ruleset will place affected rbd-objects
-      # on the assigned osd-hosts. We process the osd-hosts in question in an array (t_host_remote[*])
-      local t_hostname=/tmp/t_hostname.$$$$
-      for ((i=0; i<${#t_host[*]}; i++))
-      do
-	ssh $ssh_option ${t_host[$i]} "hostname" >$t_hostname
-	if [ $? != 0 ]; then
-	  echo "$func: ${t_host[$i]} failed to get hostname!"
-	  exit
-	fi
-        t_host_remote[$i]=`cat $t_hostname`
-      done
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> target osd-nodes involved (t_host_remote): ${t_host_remote[*]}"
-      fi
-      rm -f $t_hostname
-
-      # for each osd-node: process hostname and placement-groups on osd-node
-      local t_item=/tmp/tmp_item.$$$$
-      local tmp_item=/tmp/tmp_tmp_item.$$$$
-      >$tmp_item
-
-      for ((i=0; i<${#t_host_remote[*]}; i++))
-      do
-	local node=${t_host_remote[$i]}
-	local pgid=${t_pgid[$i]}
-	awk '$1 == "'"$node"'" && $2 == "'"$pgid"'" {print}' $pg_coll >>$tmp_item
+	echo "$func: rbd-object-v2"
 	if [ $debug ]; then
-	    echo "$func: rbd-object-v2 -> processing target osd-node ($i): ${t_host_remote[$i]}"
-	    echo "$func: rbd-object-v2 -> processing target hobject ($i):  ${t_hobject[$i]}"
-	    echo "$func: rbd-object-v2 -> processing target pgid on ($i):  ${t_pgid[$i]}"
-	    echo "$func: rbd-object-v2 -> processing target path on ($i):  ${t_data_path[$i]}"
-	    echo "$func: rbd-object-v2 -> sourcing pg collection: ${pg_coll}"
+	    echo "$func: rbd-object-v2 -> get image_id_hobject for given image-name ..."
 	fi
-      done
+	#choose_epoch $res2 | tee $item
+	choose_epoch $res2 > $item
 
-      # t_item: <remote_hostname> <pgid> <pg_epoch> <data_path>
-      sort -u $tmp_item >$t_item
-
-      # the number of entries in $tmp_item should represent the replicaton number with following structure:
-      # hostname: osd-node, placement-group: pgid, hightest epoch: pg_epoch, data-path: ceph-osd
-      if [ $debug ]; then
-        echo "$func: rbd-object-v2 -> found following replicated header objects:"
-        echo "stucture: osd-host, pgid, pg_epoch, data-path" 
-        cat $tmp_item
-      fi
-      rm -f $tmp_item
-
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> entry: select object with highest pg_epoch ..."
-      fi
-      local entry=`choose_epoch $t_item` #t_host_remote
-      if [ $debug ]; then
-	echo "$func: rbd-object-v2 -> entry: <$entry>"
-      fi
-      rm -f $t_item
-
-      node=`echo $entry|awk '{print $1}'`
-      data_path=`echo $entry|awk '{print $4}'`
-      if [ "$node"x = ""x ]; then
-        echo "$func: rbd-object-v2 -> osd-node missing. needed to extract image_header_hobject!"
-        exit
-      fi
-
-      image_hobject=$t_hobject
-      for ((i=0; i<${#t_host_remote[*]}; i++))
-      do
-	# because the systemname of the osd-node (t_host_remote) may differ from the saved
-	# hostname in the database files (t_host) we need to verify a matching data_path
-	#if [ $debug ]; then
-	#  echo "t_host_remote[$i]: ${t_host_remote[$i]}"
-	#  echo "osd node:          $node"
-	#  echo "t_data_path[$i]:   ${t_data_path[$i]}"
-	#  echo "data_path:         $data_path"
-	#  echo "t_hobject[$i]:     ${t_hobject[$i]}"
-	#  echo "t_hobject:         $t_hobject"
-	#fi
-	if [ "${t_host_remote[$i]}"x = "$node"x ] && [ "${t_data_path[$i]}"x = "$data_path"x ]; then
-	  image_hobject=${t_hobject[$i]}
-	  break
+	if [ -e $item ]; then
+            node=`cat $item|awk '{print $1}'`
+            image_id_hobject=`cat $item|awk '{print $2}'`
+            if [ "$node"x = ""x ]; then
+    		echo "$func: rbd-object-v2 -> missing 'node'"
+ 		exit
+	    fi
+	    if [ "$image_id_hobject"x = ""x ]; then
+		echo "$func: rbd-object-v2 -> missing 'image_id_hobject'"
+		exit
+  	    fi
+            rm -f $item
 	fi
-      done
-      
-      if [ "$image_id_hobject"x = ""x ]; then
-        echo "$func: rbd-object-v2: nothing found, terminating"
-        exit
-      fi
 
-      image_format=2
-      #data_path=`echo $image_header_hobject|awk -F "/current" '{print $1}'`
-      >$result
-      echo "$func: rbd-object-v2 -> lookup attributes"
-      echo -e "image_name:\t$image_name_in"
-      echo -e "image_format:\t$image_format"
-      echo -e "image_id:\t$image_id"
-      echo -e "osd_name:\t$node"
-      echo -e "data_path:\t$data_path"
-      echo -e "header_object:\t$image_hobject"
+	check_osd_process $node
 
-      # make sure there is no active ceph-osd process on target osd-node
-      check_osd_process $node
-     
-      # process the metadata
-      cmd="bash $job_path/osd_job do_image_metadata_v2 $data_path $image_id `dump_backslash $image_hobject` $snap_name" 
-      if [ $debug ]; then
-	echo "$func: call -> 'ssh $ssh_option $node $cmd'"
-      fi
-      ssh $ssh_option $node $cmd | tee $result
+	local tid=/tmp/image_id.$$$$
+	data_path=`echo $image_id_hobject|awk -F "/current" '{print $1}'`
+	>$tid
+	cmds="bash $job_path/osd_job do_image_id $data_path `dump_backslash $image_id_hobject`" 
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> get matching image-id"
+	    echo "$func: rbd-object-v2 -> ssh $ssh_optoin $node $cmds"
+	fi
+	ssh $ssh_option $node $cmds > $tid
+
+	local image_id=`cat $tid`
+	rm -f $tid
+	if [ $verbose ]; then
+	    echo "$func: rbd-object-v2 -> image_id='$image_id'"
+	fi
+
+	# get image_hobject
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> get image_hobject ..."
+	fi
+
+	# database: filename = osd-node (hostname)
+	#           contents = path to object references
+	# pattern:  header information for given image_id
+	# tcoll:    list of hostnames containing pgid's of requested image_id
+	pushd $database >/dev/null
+	local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
+	local tcoll=/tmp/tmp_image_head_coll.$$$$
+	if [ $verbose ]; then
+	    echo "$func: rbd-object-v2 -> image header search-pattern='$pattern'"
+	fi
+	# we need the grep to include the filename = node for any match
+	grep --with-filename -E $pattern * >$tcoll
+	popd >/dev/null
+
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> get image_hobject with highest pg_epoch for given image-name ..."
+	fi
+	# split up fields from osd-node elements found in database files
+	local t_host=(`cat $tcoll|awk -F ":" '{print $1}'`)
+	local t_pgid=(`cat $tcoll|awk -F ":" '{print $2}'|sed -n 's/.*\/\([0-9a-fA-F]\+\.[0-9a-fA-F]\+\)_head\/.*/\1/p'`)
+	local t_hobject=(`cat $tcoll|awk -F ":" '{print $2}'`)
+	local t_data_path=(`cat $tcoll|awk -F ":" '{split($2, arr, "/current/"); print arr[1];}'`)
+	rm -f $tcoll
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> target hostname from config-file (t_host): ${t_host}"
+	    echo "$func: rbd-object-v2 -> target id of placement group (t_pgid):     ${t_pgid}"
+	    echo "$func: rbd-object-v2 -> target name of header object (t_hobject):  ${t_hobject}"
+	    echo "$func: rbd-object-v2 -> target data path for object (t_data_path): ${t_data_path}"
+	fi
+
+	# the replicated-pool (pool_id) has an associated replication number (attribute: size)
+	# successfull processing of its associated crush-ruleset will place affected rbd-objects
+	# on the assigned osd-hosts. We process the osd-hosts in question in an array (t_host_remote[*])
+	local t_hostname=/tmp/t_hostname.$$$$
+	for ((i=0; i<${#t_host[*]}; i++))
+	do
+	  ssh $ssh_option ${t_host[$i]} "hostname" >$t_hostname
+	  if [ $? != 0 ]; then
+	      echo "$func: ${t_host[$i]} failed to get hostname!"
+	      exit
+	  fi
+          t_host_remote[$i]=`cat $t_hostname`
+	done
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> target osd-nodes involved (t_host_remote): ${t_host_remote[*]}"
+	fi
+	rm -f $t_hostname
+
+	# for each osd-node: process hostname and placement-groups on osd-node
+	local t_item=/tmp/tmp_item.$$$$
+	local tmp_item=/tmp/tmp_tmp_item.$$$$
+	>$tmp_item
+
+	for ((i=0; i<${#t_host_remote[*]}; i++))
+	do
+	  local node=${t_host_remote[$i]}
+	  local pgid=${t_pgid[$i]}
+	  awk '$1 == "'"$node"'" && $2 == "'"$pgid"'" {print}' $pg_coll >>$tmp_item
+	  if [ $debug ]; then
+	      echo "$func: rbd-object-v2 -> processing target osd-node ($i): ${t_host_remote[$i]}"
+	      echo "$func: rbd-object-v2 -> processing target hobject ($i):  ${t_hobject[$i]}"
+	      echo "$func: rbd-object-v2 -> processing target pgid on ($i):  ${t_pgid[$i]}"
+	      echo "$func: rbd-object-v2 -> processing target path on ($i):  ${t_data_path[$i]}"
+	      echo "$func: rbd-object-v2 -> sourcing pg collection: ${pg_coll}"
+	  fi
+	done
+
+	# t_item: <remote_hostname> <pgid> <pg_epoch> <data_path>
+	sort -u $tmp_item >$t_item
+
+	# the number of entries in $tmp_item should represent the replicaton number with following structure:
+	# hostname: osd-node, placement-group: pgid, hightest epoch: pg_epoch, data-path: ceph-osd
+	if [ $debug ]; then
+            echo "$func: rbd-object-v2 -> found following replicated header objects:"
+            echo "stucture: osd-host, pgid, pg_epoch, data-path" 
+            cat $tmp_item
+	fi
+	rm -f $tmp_item
+
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> entry: select object with highest pg_epoch ..."
+	fi
+	local entry=`choose_epoch $t_item` #t_host_remote
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> entry: <$entry>"
+	fi
+	rm -f $t_item
+
+	node=`echo $entry|awk '{print $1}'`
+	data_path=`echo $entry|awk '{print $4}'`
+	if [ "$node"x = ""x ]; then
+            echo "$func: rbd-object-v2 -> osd-node missing. needed to extract image_header_hobject!"
+            exit
+	fi
+
+	image_hobject=$t_hobject
+	for ((i=0; i<${#t_host_remote[*]}; i++))
+	do
+	  # because the systemname of the osd-node (t_host_remote) may differ from the saved
+	  # hostname in the database files (t_host) we need to verify a matching data_path
+	  #if [ $debug ]; then
+	  #  echo "t_host_remote[$i]: ${t_host_remote[$i]}"
+	  #  echo "osd node:          $node"
+	  #  echo "t_data_path[$i]:   ${t_data_path[$i]}"
+	  #  echo "data_path:         $data_path"
+	  #  echo "t_hobject[$i]:     ${t_hobject[$i]}"
+	  #  echo "t_hobject:         $t_hobject"
+	  #fi
+	  if [ "${t_host_remote[$i]}"x = "$node"x ] && [ "${t_data_path[$i]}"x = "$data_path"x ]; then
+	      image_hobject=${t_hobject[$i]}
+	      break
+	  fi
+	done
+	
+	if [ "$image_id_hobject"x = ""x ]; then
+            echo "$func: rbd-object-v2: nothing found, terminating"
+            exit
+	fi
+
+	image_format=2
+	#data_path=`echo $image_header_hobject|awk -F "/current" '{print $1}'`
+	>$result
+	echo "$func: rbd-object-v2 -> lookup attributes"
+	echo -e "image_name:\t$image_name_in"
+	echo -e "image_format:\t$image_format"
+	echo -e "image_id:\t$image_id"
+	echo -e "osd_name:\t$node"
+	echo -e "data_path:\t$data_path"
+	echo -e "header_object:\t$image_hobject"
+
+	# make sure there is no active ceph-osd process on target osd-node
+	check_osd_process $node
+	
+	# process the metadata
+	cmd="bash $job_path/osd_job do_image_metadata_v2 $data_path $image_id `dump_backslash $image_hobject` $snap_name" 
+	if [ $debug ]; then
+	    echo "$func: call -> 'ssh $ssh_option $node $cmd'"
+	fi
+	ssh $ssh_option $node $cmd | tee $result
     fi  #end if [ -s $res1 ]; then
 
   } #end image format v2
 
   if [ ! -s $result ]; then
-    echo "$func: $image_name_in does not exist, terminating" 
-    exit
+      echo "$func: $image_name_in does not exist, terminating" 
+      exit
   fi
   
   # to assign value to global variable
   db_image_prefix=`cat $result|awk '/^(object_prefix|block_name):/{print $2}'`
   if [ "$db_image_prefix"x = ""x ]; then
-    echo "$func: image_prefix does not exist, terminating"
-    exit
+      echo "$func: image_prefix does not exist, terminating"
+      exit
   fi
 
   db_image_size=`cat $result|awk '/^image_size:/{print $2}'`
   db_order=`cat $result|awk '/^order:/{print $2}'`
   if [ "$snap_name"x != ""x ]; then
-    db_snap_id=`cat $result|awk '/^snapshot:/{print $2}'`
-    if [ "$db_snap_id"x = ""x ]; then
-      echo "$func: $image_name_in@$snap_name NOT EXISTS"
-      exit
-    fi
-    db_snap_image_size=`cat $result|awk '/^snapshot:/{print $4}'`
+      db_snap_id=`cat $result|awk '/^snapshot:/{print $2}'`
+      if [ "$db_snap_id"x = ""x ]; then
+	  echo "$func: $image_name_in@$snap_name NOT EXISTS"
+	  exit
+      fi
+      db_snap_image_size=`cat $result|awk '/^snapshot:/{print $4}'`
   else
     #save snaplist
     local image_snaplist=$images/pool_$pool_id/$image_name_in/@snaplist
     local image_dir=$images/pool_$pool_id/$image_name_in
     if [ ! -e $image_dir ]; then
-      mkdir -p $image_dir
+	mkdir -p $image_dir
     fi
     cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
   fi
@@ -496,14 +499,14 @@ function lookup_image()
 
 function list_images()
 {
-   echo "=============== format =============="
-   echo "format: <pool_id>/<image_name>"
-   echo "================ v1: ================"
-   #sed -n 's/\(.*\)\/\(.*\)\.rbd__\(.*\)/\2/p' $image_coll_v1|sort -u|sed -e 's/\\u/_/g'
-   sed -n 's/.*\/\(.*\)\.rbd__head_[0-9A-F]\{8\}__\([0-9a-f]\+\).*/\2 \1/p' $image_coll_v1|sort -u|awk '{print strtonum("0x"$1)"/"$2;}'|sed -e 's/\\u/_/g'
-   echo "================ v2: ================"
-   #sed -n 's/\(.*\)\/rbd\\uid.\(.*\)__\(head.*\)/\2/p' $image_coll_v2|sort -u|sed 's/\\u/_/g'
-   sed -n 's/.*\/rbd\\uid.\(.*\)__head_[0-9A-F]\{8\}__\([0-9a-f]\+\).*/\2 \1/p' $image_coll_v2|sort -u|awk '{print strtonum("0x"$1)"/"$2}'|sed 's/\\u/_/g'
+  echo "=============== format =============="
+  echo "format: <pool_id>/<image_name>"
+  echo "================ v1: ================"
+  #sed -n 's/\(.*\)\/\(.*\)\.rbd__\(.*\)/\2/p' $image_coll_v1|sort -u|sed -e 's/\\u/_/g'
+  sed -n 's/.*\/\(.*\)\.rbd__head_[0-9A-F]\{8\}__\([0-9a-f]\+\).*/\2 \1/p' $image_coll_v1|sort -u|awk '{print strtonum("0x"$1)"/"$2;}'|sed -e 's/\\u/_/g'
+  echo "================ v2: ================"
+  #sed -n 's/\(.*\)\/rbd\\uid.\(.*\)__\(head.*\)/\2/p' $image_coll_v2|sort -u|sed 's/\\u/_/g'
+  sed -n 's/.*\/rbd\\uid.\(.*\)__head_[0-9A-F]\{8\}__\([0-9a-f]\+\).*/\2 \1/p' $image_coll_v2|sort -u|awk '{print strtonum("0x"$1)"/"$2}'|sed 's/\\u/_/g'
 }
 
 # lookup image metadata
@@ -519,12 +522,12 @@ function discover_image_nosnap()
   lookup_image $pool_id $image_name # assign $image_prefix
   gather_hobject_nosnap $pool_id $db_image_prefix 
   if [ $? -ne 0 ]; then
-    exit
+      exit
   fi
   local image_hobjects_stable_nosnap=$images/pool_$pool_id/$db_image_prefix/$db_image_prefix"_head"
   local image_hobjects_dir=$images/pool_$pool_id/$image_name_in
   if [ ! -e $image_hobjects_dir ]; then
-    mkdir -p $image_hobjects_dir
+      mkdir -p $image_hobjects_dir
   fi
   # mv image_prefix to image_name
   mv $image_hobjects_stable_nosnap $image_hobjects_dir/$image_name_in
@@ -537,7 +540,7 @@ function get_object_clone()
 {
   local func="get_object_clone"
   if [ $# -lt 4 ]; then
-    exit
+      exit
   fi
 
   local object_offset_string=$1
@@ -562,8 +565,8 @@ function gen_snapset_hobject()
   local func="gen_image_snapset"
   echo "$func ..."
   if [ $# -lt 4 ]; then
-    echo "$func: parameters: <pool_id> <image_prefix> <snaplist_path> <snapset_output_dir>"
-    exit
+      echo "$func: parameters: <pool_id> <image_prefix> <snaplist_path> <snapset_output_dir>"
+      exit
   fi
   local pool_id=$1
   local image_prefix=$2
@@ -586,7 +589,7 @@ function gen_snapset_hobject()
     gather_hobject_snap $pool_id $image_prefix $snapid 
     local res=$?
     if [ $res -ne 0 ]; then
-      touch $image_snap
+	touch $image_snap
     else 
       mv $image_hobjects_stable_snap $image_snap
     fi
@@ -601,8 +604,8 @@ function discover_image_snap()
   local func="discover_image_snap"
   echo "$func ..."
   if [ $# -lt 3 ]; then
-    echo "$func: paramters: <pool_id> <image_name> [<snap_name>]"
-    exit
+      echo "$func: paramters: <pool_id> <image_name> [<snap_name>]"
+      exit
   fi
   local pool_id=$1
   local image_name=$2
@@ -611,16 +614,16 @@ function discover_image_snap()
   #mkdir -p $images/$image_prefix
   lookup_image $pool_id $image_name $snap_name # input image_name and snap_name to lookup metadata and snap_id
   if [ "$db_snap_id"x = ""x ]; then
-    echo "$func: lookup image failed to gen snapid"
-    exit
+      echo "$func: lookup image failed to gen snapid"
+      exit
   fi
   local image_hobjects_dir_prefix=$images/pool_$pool_id/$db_image_prefix
   local image_nosnap=$images/pool_$pool_id/$image_name_in 
   #check if image nosnap recovered
   if [ ! -s $image_nosnap ]; then
-    echo "$func: please recover image nosnap before recover with snap"
-    rm -rf $image_hobjects_dir_prefix
-    exit
+      echo "$func: please recover image nosnap before recover with snap"
+      rm -rf $image_hobjects_dir_prefix
+      exit
   fi
   local image_hobject_dir=$images/pool_$pool_id/$image_name_in
   local image_snap_hobject=$image_hobject_dir/$image_name_in@$db_snap_id
@@ -629,13 +632,13 @@ function discover_image_snap()
   local image_snapset_dir=$image_hobject_dir/@snapset_dir
   local image_head=$image_hobject_dir/$image_name_in
   if [ ! -e $image_hobject_dir ]; then
-    mkdir -p $image_hobject_dir
+      mkdir -p $image_hobject_dir
   fi
   # only gen snapset one time
   if [ ! -e $image_snapset_dir ]; then
-    mkdir -p $image_snapset_dir
-    gen_snapset_hobject $pool_id $db_image_prefix $image_snaplist $image_snapset_dir  
-   
+      mkdir -p $image_snapset_dir
+      gen_snapset_hobject $pool_id $db_image_prefix $image_snaplist $image_snapset_dir  
+      
   fi
 
   echo "$func: will get object clone ..."
@@ -654,8 +657,8 @@ function discover_image_snap()
     IFS=$OOIFS
     local entry=`get_object_clone $offset_string $db_snap_id $image_snaplist $image_snapset_dir` 
     if [ "$entry"x != ""x ]; then
-      echo $entry >> $image_snap_hobject
-      echo `dump_backslash $line` >> $image_snap_hobject_head
+	echo $entry >> $image_snap_hobject
+	echo `dump_backslash $line` >> $image_snap_hobject_head
     fi
   done < $image_head
   rm -rf $image_hobjects_dir_prefix
@@ -668,8 +671,8 @@ function copy_image_nosnap_single_thread()
   local func="copy_image_nosnap_single_thread"
   echo "$func ..."
   if [ $# -lt 3 ]; then
-    echo "$func: parameters: <pool_id> <image_hobjects> <backup_dir>"
-    exit
+      echo "$func: parameters: <pool_id> <image_hobjects> <backup_dir>"
+      exit
   fi
   local pool_id=$1
   local image_hobjects=$2
@@ -678,11 +681,11 @@ function copy_image_nosnap_single_thread()
 
   # make sure lookup_image first
   if [ $found = 0 ]; then
-    echo "$func: image not found, maybe forget to discover_image"
-    exit
+      echo "$func: image not found, maybe forget to discover_image"
+      exit
   fi
   if [ ! -e $backup_dir ]; then
-    mkdir -p $backup_dir
+      mkdir -p $backup_dir
   fi
 
   local image_dir=$backup_dir/pool_$pool_id/$image_name_in
@@ -690,11 +693,11 @@ function copy_image_nosnap_single_thread()
   local CURRENT=$image_dir/@CURRENT
   local LOCK=$image_dir/@LOCK
   if [ ! -e $image_dir ]; then
-    mkdir -p $image_dir
+      mkdir -p $image_dir
   fi
   if [ -e $LOCK ]; then
-    echo "$func: $LOCK is locked by other process"
-    exit
+      echo "$func: $LOCK is locked by other process"
+      exit
   else
     touch $LOCK
   fi
@@ -727,26 +730,26 @@ function copy_image_nosnap_single_thread()
   local unit=$((1<<$db_order))
   while read line
   do
-  {
-    icount=$(($icount+1))
-    node=`echo $line|awk '{print $1}'` 
-    hobject=`echo $line|awk '{print $3}'` 
-    offset=`echo $line|awk '{print $4}'`
-    off=$((16#$offset))
-    if [ $icount = 1 ]; then
-      istart=$offset
-    fi
-    hobject=`dump_backslash $hobject`
-    iend=$offset
-    sshcmd="cat $hobject"
-    ssh $ssh_option $node $sshcmd < /dev/null | dd of=$image_file bs=$unit seek=$off conv=notrunc 2>/dev/null
-    percent=`echo "scale=3; 100*$icount/$entry_count"|bc`
-    tput sc  #record current cursor
-    echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
-    if [ $icount != $entry_count ]; then
-      tput rc # backport most recent cursor
-    fi
-  }
+    {
+      icount=$(($icount+1))
+      node=`echo $line|awk '{print $1}'` 
+      hobject=`echo $line|awk '{print $3}'` 
+      offset=`echo $line|awk '{print $4}'`
+      off=$((16#$offset))
+      if [ $icount = 1 ]; then
+	  istart=$offset
+      fi
+      hobject=`dump_backslash $hobject`
+      iend=$offset
+      sshcmd="cat $hobject"
+      ssh $ssh_option $node $sshcmd < /dev/null | dd of=$image_file bs=$unit seek=$off conv=notrunc 2>/dev/null
+      percent=`echo "scale=3; 100*$icount/$entry_count"|bc`
+      tput sc  #record current cursor
+      echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
+      if [ $icount != $entry_count ]; then
+	  tput rc # backport most recent cursor
+      fi
+    }
   done < $image_hobjects
 
   echo
@@ -768,8 +771,8 @@ function collect_image_snap_objects()
   local func="collect_image_snap_objects"
   #$1=backup_dir, $2=snap_name, $3=snap_hobjects, $4=head_hobjects
   if [ $# -lt 6 ]; then
-    echo "$func: parameters: <pool_id> <image_name> <snap_id> <snap_hobjects> <head_hobjects> <backup_dir>"
-    exit
+      echo "$func: parameters: <pool_id> <image_name> <snap_id> <snap_hobjects> <head_hobjects> <backup_dir>"
+      exit
   fi  
 
   local pool_id=$1
@@ -783,12 +786,12 @@ function collect_image_snap_objects()
   local head_dir=$backup_dir/pool_$pool_id/$image_name/@head
   local snap_dir=$backup_dir/pool_$pool_id/$image_name/@$snap_id
   local CURRENT=$backup_dir/pool_$pool_id/$image_name/@CURRENT
- 
+  
   if [ ! -e $head_dir ]; then
-    mkdir -p $head_dir
+      mkdir -p $head_dir
   fi
   if [ ! -e $snap_dir ]; then
-    mkdir -p $snap_dir
+      mkdir -p $snap_dir
   fi
 
   local snap_node= #osd node
@@ -803,22 +806,22 @@ function collect_image_snap_objects()
 
   # ignore if there is no object in snapshot(empty )
   if [ ! -s $snap_hobjects ]; then
-    echo "$func: $snap_hobjects is empty"
-    return 0
+      echo "$func: $snap_hobjects is empty"
+      return 0
   fi
   local start=`head -n 1 $snap_hobjects|awk '{print $4}'`
   local end=`tail -n 1 $snap_hobjects|awk '{print $4}'`
   local entry_count=`cat $snap_hobjects|wc -l`
   if [ $((16#$first_offset)) -gt $((16#$last_offset)) ]; then
-    echo "$func: $snap_hobjects not sorted"
-    return 1
+      echo "$func: $snap_hobjects not sorted"
+      return 1
   fi
 
   # just assert if ignored empty snapshot
   if [ "$start"x = ""x ] || [ "$end"x = ""x ]; then
-    return 1
+      return 1
   fi
- 
+  
   # speed up copy snapshot
   # lookup the coresponding head hobject of snap hobject
   # use command: grep <offset> <head hobjects>
@@ -850,7 +853,7 @@ function collect_image_snap_objects()
   local n1=`grep -n $start $head_hobjects|head -n 1|cut -d ":" -f 1`
   # get the line number of the end offset in head hobjects
   local n2=`grep -n $end $head_hobjects|head -n 1|cut -d ":" -f 1`
- 
+  
   local icount=0
   local istart=
   local iend=
@@ -887,15 +890,15 @@ function collect_image_snap_objects()
     snap_filename=$snap_dir/$snap_offset
 
     if [ $icount = 1 ]; then
-      istart=$snap_offset
+	istart=$snap_offset
     fi
     iend=$snap_offset
 
     #lookup corresponding head hobject of snap hobject
     local res=`grep $snap_offset $snap_tmp|head -n 1` 
     if [ "$res"x = ""x ]; then
-      echo "$func: image object[ $snap_offset ] missing"
-      exit
+	echo "$func: image object[ $snap_offset ] missing"
+	exit
     fi
     
     local arr2=(`echo $res`)
@@ -906,10 +909,10 @@ function collect_image_snap_objects()
 
     # just copy object(snap/head) if it does not exist
     if [ ! -e $snap_filename ]; then
-      ssh $ssh_option $snap_node "cat $snap_hobject" > $snap_filename 
+	ssh $ssh_option $snap_node "cat $snap_hobject" > $snap_filename 
     fi
     if [ ! -e $head_filename ]; then
-      ssh $ssh_option $head_node "cat $head_hobject" > $head_filename 
+	ssh $ssh_option $head_node "cat $head_hobject" > $head_filename 
     fi
     IFS=$OOIFS
 
@@ -917,7 +920,7 @@ function collect_image_snap_objects()
     tput sc  #record current cursor
     echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
     if [ $icount != $entry_count ]; then
-      tput rc # backport most recent cursor
+	tput rc # backport most recent cursor
     fi
   done
   echo
@@ -932,8 +935,8 @@ function copy_image_snap_single_thread()
 {
   local func="copy_image_snap_single_thread"
   if [ $# -lt 6 ]; then
-    echo "$func: parameters: <pool_id> <image_name> <snap_id> <snap_hobjects> <head_hobjects> <backup_dir>" 
-    exit
+      echo "$func: parameters: <pool_id> <image_name> <snap_id> <snap_hobjects> <head_hobjects> <backup_dir>" 
+      exit
   fi
   local pool_id=$1
   local image_name=$2
@@ -947,8 +950,8 @@ function copy_image_snap_single_thread()
   local LOCK=$backup_dir/pool_$pool_id/$image_name/@LOCK
   #lock
   if [ -e $LOCK ]; then
-    echo "$func: $LOCK is locked by other process"
-    exit
+      echo "$func: $LOCK is locked by other process"
+      exit
   else
     touch $LOCK
   fi
@@ -996,8 +999,8 @@ function rollback_image_snap()
   
   trap 'echo $func failed; exit;' INT HUP
   if [ $# -lt 6 ]; then
-    echo "$func: parameters <pool_id> <image_name> <snap_id> <snap_object_dir> <backup_dir> <image_unit>"
-    exit
+      echo "$func: parameters <pool_id> <image_name> <snap_id> <snap_object_dir> <backup_dir> <image_unit>"
+      exit
   fi
   local pool_id=$1
   local image_name=$2
@@ -1013,24 +1016,24 @@ function rollback_image_snap()
   local CURRENT=$backup_dir/pool_$pool_id/$image_name/@CURRENT
   local LOCK=$backup_dir/pool_$pool_id/$image_name/@LOCK
   if [ -e $LOCK ]; then
-    echo "$func: $LOCK is locked by other process"
-    exit
+      echo "$func: $LOCK is locked by other process"
+      exit
   else
     touch $LOCK
   fi
   if [ $snap_id -ne -2 ]; then
-    echo $snap_id > $CURRENT
+      echo $snap_id > $CURRENT
   else
     echo "head" > $CURRENT
   fi 
 
   if [ ! -e $snap_object_dir ]; then
-    return 0
+      return 0
   fi
 
   if [ "$snap_object_dir"x != "$head_object_dir"x ]; then
-    echo "$func: need to compute diff_set of head"
-    need_diff_set=1
+      echo "$func: need to compute diff_set of head"
+      need_diff_set=1
   else
     echo "$func: NO diff_set"
     need_diff_set=0
@@ -1053,65 +1056,65 @@ function rollback_image_snap()
 
   # if need to compute difference set of head_objects and snap_objects
   if [ $need_diff_set -ne 0 ]; then
-    head_objects=(`ls $head_object_dir`) 
+      head_objects=(`ls $head_object_dir`) 
 
-    #get the difference set: ( head_objects - snap_objects )
-    diff_set=(`
+      #get the difference set: ( head_objects - snap_objects )
+      diff_set=(`
     sort -m <(echo ${head_objects[@]}|xargs -n 1 echo) <(echo ${snap_objects[@]}|xargs -n 1 echo) \
   	<(echo ${snap_objects[@]}|xargs -n 1 echo) |uniq -u`) 
 
-    # copy diff_set of head object to image
-    pushd $head_object_dir >/dev/null
+      # copy diff_set of head object to image
+      pushd $head_object_dir >/dev/null
 
-    echo "$func: copy diff_set head objects ..."
-    entry_count=${#diff_set[@]}  
-    start=${diff_set[0]}
-    end=
-    if [ $entry_count -gt 0 ]; then
-      end=${diff_set[$(($entry_count - 1))]}
-    fi
-    offset=
-    icount=0
-    istart=
-    iend=
-    percent=
-
-    echo -e "object_count\t$entry_count"
-    echo -e "range\t\t[$start ~ $end] count:$entry_count"
-
-    for object in ${diff_set[@]}
-    do
-      icount=$(($icount+1))
-      if [ $icount = 1 ]; then
-        istart=$object
+      echo "$func: copy diff_set head objects ..."
+      entry_count=${#diff_set[@]}  
+      start=${diff_set[0]}
+      end=
+      if [ $entry_count -gt 0 ]; then
+	  end=${diff_set[$(($entry_count - 1))]}
       fi
-      iend=$object
+      offset=
+      icount=0
+      istart=
+      iend=
+      percent=
 
-      local offset=$((16#$object))
-      dd if=$object of=$image_path bs=$image_unit seek=$offset conv=notrunc 2>/dev/null
+      echo -e "object_count\t$entry_count"
+      echo -e "range\t\t[$start ~ $end] count:$entry_count"
 
-      percent=`echo "scale=3; 100*$icount/$entry_count"|bc`
-      tput sc  #record current cursor
-      echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
-      if [ $icount != $entry_count ]; then
-        tput rc # backport most recent cursor
+      for object in ${diff_set[@]}
+      do
+	icount=$(($icount+1))
+	if [ $icount = 1 ]; then
+            istart=$object
+	fi
+	iend=$object
+
+	local offset=$((16#$object))
+	dd if=$object of=$image_path bs=$image_unit seek=$offset conv=notrunc 2>/dev/null
+
+	percent=`echo "scale=3; 100*$icount/$entry_count"|bc`
+	tput sc  #record current cursor
+	echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
+	if [ $icount != $entry_count ]; then
+            tput rc # backport most recent cursor
+	fi
+      done
+      if [ $entry_count -gt 0 ]; then
+	  echo
       fi
-    done
-    if [ $entry_count -gt 0 ]; then
-      echo
-    fi
-    popd >/dev/null
+      popd >/dev/null
 
-    if [ $snap_id -ne -2 ]; then
-      echo -e "$image_name already rollback diff_set: (head - snap)"
-    fi
+      if [ $snap_id -ne -2 ]; then
+	  echo -e "$image_name already rollback diff_set: (head - snap)"
+      fi
   fi
   
   # copy snap object to image
   pushd $snap_object_dir >/dev/null 
 
   if [ $need_diff_set -ne 0 ]; then
-    echo "$func: copy snap objects ..."
+      echo "$func: copy snap objects ..."
   else
     echo "$func: copy head objects ..."
   fi
@@ -1119,7 +1122,7 @@ function rollback_image_snap()
   start=${snap_objects[0]}
   end=
   if [ $entry_count -gt 0 ]; then
-    end=${snap_objects[$(($entry_count - 1))]}
+      end=${snap_objects[$(($entry_count - 1))]}
   fi
   offset=
   icount=0
@@ -1134,7 +1137,7 @@ function rollback_image_snap()
   do
     icount=$(($icount+1))
     if [ $icount = 1 ]; then
-      istart=$object
+	istart=$object
     fi
     iend=$object
 
@@ -1145,17 +1148,17 @@ function rollback_image_snap()
     tput sc  #record current cursor
     echo -n -e "complete\t[$istart ~ $iend] $icount/$entry_count ==> "$percent"%"
     if [ $icount != $entry_count ]; then
-      tput rc # backport most recent cursor
+	tput rc # backport most recent cursor
     fi
   done
   if [ $entry_count -gt 0 ]; then
-    echo
+      echo
   fi
   popd >/dev/null
 
   rm -f $LOCK
   if [ $snap_id -ne -2 ]; then
-    echo "$image_name rollback to snapid: $snap_id"
+      echo "$image_name rollback to snapid: $snap_id"
   else
     echo "$image_name rollback to head"
   fi
@@ -1167,8 +1170,8 @@ function recover_image()
   echo "$func ..."
   
   if [ $# -lt 3 ]; then
-    echo "$func: paramters: <pool_id> <image_name> <snap_name> [<backup_dir>]"
-    exit
+      echo "$func: paramters: <pool_id> <image_name> <snap_name> [<backup_dir>]"
+      exit
   fi
 
   local pool_id=$1
@@ -1177,41 +1180,41 @@ function recover_image()
   local backup_dir=$4
   pool_id=$(($pool_id))
   if [ "$snap_name"x = "@"x ]; then
-    snap_name=
+      snap_name=
   fi
   if [ "$backup_dir"x = ""x ]; then
-    backup_dir=$default_backup_dir
+      backup_dir=$default_backup_dir
   fi
 
   #recover image with nosnap
   if [ "$snap_name"x = ""x ]; then
-    discover_image_nosnap $pool_id $img_name #input image_name 
-    local image_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in
-    copy_image_nosnap_single_thread $pool_id $image_hobjects $backup_dir
+      discover_image_nosnap $pool_id $img_name #input image_name 
+      local image_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in
+      copy_image_nosnap_single_thread $pool_id $image_hobjects $backup_dir
 
-  #recover image with snap
+      #recover image with snap
   else
 
     # check if recovered head already
     local img_hobjects_path=$images/pool_$pool_id/$img_name/$img_name
     local img_file_path=$backup_dir/pool_$pool_id/$img_name/$img_name
     if [ ! -e $img_hobjects_path ] || [ ! -e $img_file_path ]; then
-      echo "$func: $img_name@$snap_name : can not rollback to snapshot, please recover image head first"
-      exit
+	echo "$func: $img_name@$snap_name : can not rollback to snapshot, please recover image head first"
+	exit
     fi
 
     # rollback to head
     if [ "$snap_name"x = "@@"x ]; then
-      local head_dir=$backup_dir/pool_$pool_id/$img_name/@head
-      if [ -e $head_dir ]; then
-	local unit=`pushd $head_dir >/dev/null; ls|head -n 1|xargs -n 1 stat|awk '/Size:/{print $2}'`
-        # rollback to head
-        rollback_image_snap $pool_id $img_name -2 $backup_dir/$img_name/@head $backup_dir $unit
-        echo "$image_name_in head : $backup_dir/$img_name/$img_name"
-      else
-	echo "$func: no need to rollback to head"
-      fi
-      return 0
+	local head_dir=$backup_dir/pool_$pool_id/$img_name/@head
+	if [ -e $head_dir ]; then
+	    local unit=`pushd $head_dir >/dev/null; ls|head -n 1|xargs -n 1 stat|awk '/Size:/{print $2}'`
+            # rollback to head
+            rollback_image_snap $pool_id $img_name -2 $backup_dir/$img_name/@head $backup_dir $unit
+            echo "$image_name_in head : $backup_dir/$img_name/$img_name"
+	else
+	  echo "$func: no need to rollback to head"
+	fi
+	return 0
     fi
     
     # rollback to snap

@@ -1,3 +1,6 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 # file: common_h
 #
@@ -75,8 +78,8 @@ function check_ceph_env()
 {
   local func="check_ceph_env"
   if [ $# -lt 2 ];then
-    echo "$func: parameters: <node> <data_path>" 
-    exit
+      echo "$func: parameters: <node> <data_path>" 
+      exit
   fi
   local node=$1
   local data_path=$2
@@ -87,8 +90,8 @@ function check_ceph_env()
   ssh -o ConnectTimeout=1 $node "echo -n" </dev/null
   res=$?
   if [ $res -ne 0 ];then
-    echo "[$node]: ssh failed"
-    exit
+      echo "[$node]: ssh failed"
+      exit
   fi
 
   cmd=ceph-kvstore-tool
@@ -97,16 +100,16 @@ function check_ceph_env()
   res=$?
   # ceph-kvstore-tool will return 1 with no parameters input
   if [ $res -ne 1 ];then
-    echo "[$node]: $cmd not installed"
-    exit
+      echo "[$node]: $cmd not installed"
+      exit
   fi
 
   trap 'echo [$node]: stat $data_path failed; exit' INT HUP
   ssh -o ConnectTimeout=1 $node "stat $data_path &>/dev/null;"  </dev/null
   res=$?
   if [ $res -ne 0 ];then
-    echo "[$node]: $data_path not exists"
-    exit
+      echo "[$node]: $data_path not exists"
+      exit
   fi
 }
 
@@ -115,23 +118,23 @@ function init_env_osd()
 {
   local func="init_env_osd"
   if [ "$1"x = ""x ];then
-    echo "$func: no osd_data_path input" 
-    exit
+      echo "$func: no osd_data_path input" 
+      exit
   fi
   osd_data=$1
   omap_path=$osd_data/current/omap
 
   if [ ! -e $single_node ];then
-    mkdir -p $single_node
+      mkdir -p $single_node
   fi
 
   local osd_id=`gen_md5 $osd_data`
   local osd_dir=$single_node/$osd_id
 
   if [ ! -e $osd_dir ];then
-    mkdir -p $osd_dir
+      mkdir -p $osd_dir
   fi
- 
+  
   image_list_v1=$osd_dir/image_list_v1
   image_list_v2=$osd_dir/image_list_v2
   image_v1=$osd_dir/image_v1
@@ -148,28 +151,28 @@ function init_env_admin()
   local pwd_path=`pwd`
   osd_host_mapping=$pwd_path/config/osd_host_mapping
   if [ ! -s $osd_host_path ];then
-    echo "$func: config/osd_host_path not exists or empty"
-    exit
+      echo "$func: config/osd_host_path not exists or empty"
+      exit
   fi
   if [ ! -e $rbd_image ];then
-    mkdir -p $rbd_image
+      mkdir -p $rbd_image
   fi
   if [ ! -e $images ];then
-    mkdir -p $images
+      mkdir -p $images
   fi
 
   if [ ! -s $mon_host ];then
-    echo "$func: config/mon_host not exists or empty"
-    exit
+      echo "$func: config/mon_host not exists or empty"
+      exit
   fi
   if [ ! -e $mds_host ];then
-    echo "$func: config/mds_host not exists"
-    exit
+      echo "$func: config/mds_host not exists"
+      exit
   fi
 
   # we just judge if osd_host is needed to be updated
   if [ -s $osd_host ] && [ $osd_host -nt $osd_host_path ];then
-    return  
+      return  
   fi
   echo "$func: create osd_host ..."
   # create file: osd_host and osd_host_mapping
@@ -181,19 +184,19 @@ function init_env_admin()
   do
     lineno=$(($lineno + 1))
     if [ "$line"x = ""x ];then
-      continue;
+	continue;
     fi
     local node=`echo $line|awk '{print $1}'`
     if [ "$node"x = ""x ];then
-      echo "$func: osd_host_path : line $lineno: osd hostname not input"
-      rm -rf $osd_host $osd_host_mapping
-      exit
+	echo "$func: osd_host_path : line $lineno: osd hostname not input"
+	rm -rf $osd_host $osd_host_mapping
+	exit
     fi
     local data_path=`echo $line|awk '{print $2}'`
     if [ "$data_path"x = ""x ];then
-      echo "$func: osd_host_path : line $lineno: osd data_path not input"
-      rm -rf $osd_host $osd_host_mapping
-      exit
+	echo "$func: osd_host_path : line $lineno: osd data_path not input"
+	rm -rf $osd_host $osd_host_mapping
+	exit
     fi
     lines=$(($lines + 1))
     # in case : there are servral hostnames on the same node
@@ -201,9 +204,9 @@ function init_env_admin()
     local hostname_alias=
     hostname_alias=`ssh $ssh_option $node "hostname" 2>/dev/null </dev/null`
     if [ "$hostname_alias"x = ""x ];then
-      echo "$func: osd_host_path: line $lineno: $node: get remote hostname alias failed"
-      rm -rf $osd_host $osd_host_mapping
-      exit
+	echo "$func: osd_host_path: line $lineno: $node: get remote hostname alias failed"
+	rm -rf $osd_host $osd_host_mapping
+	exit
     fi
     echo "$node $hostname_alias" >>$osd_host_mapping
     echo $node >> $osd_host
@@ -212,8 +215,8 @@ function init_env_admin()
   done < $osd_host_path
 
   if [ $lines = 0 ];then
-    echo "$func: no osd host path valid"
-    exit
+      echo "$func: no osd host path valid"
+      exit
   fi
 }
 
@@ -221,7 +224,7 @@ function admin_parse_osd()
 {
   local func="admin_parse_osd"
   if [ -s $osd_host ];then
-    return  
+      return  
   fi
   # create file: osd_host
   >$osd_host
@@ -231,17 +234,17 @@ function admin_parse_osd()
   do
     lineno=$(($lineno + 1))
     if [ "$line"x = ""x ];then
-      continue;
+	continue;
     fi
     local node=`echo $line|awk '{print $1}'`
     if [ "$node"x = ""x ];then
-      echo "$func: osd_host_path : line $lineno: osd_host not input"
-      exit
+	echo "$func: osd_host_path : line $lineno: osd_host not input"
+	exit
     fi
     local data_path=`echo $line|awk '{print $2}'`
     if [ "$data_path"x = ""x ];then
-      echo "$func: osd_host_path : line $lineno: osd_data not input"
-      exit
+	echo "$func: osd_host_path : line $lineno: osd_data not input"
+	exit
     fi
     lines=$(($lines + 1))
     echo $node >> $osd_host
@@ -252,7 +255,7 @@ function admin_parse_osd()
 function get_omap_list()
 {
   if [ $debug ]; then
-	echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list"
+      echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list"
   fi	
   ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list
 }
@@ -260,7 +263,7 @@ function get_omap_list()
 function convert_underline()
 {
   if [ "$1"x = ""x ];then
-    return
+      return
   fi
 
   echo $1|sed -e 's/_/\\u/gp'|head -n 1
@@ -279,7 +282,7 @@ function dump_dump_backslash()
 function char_convert()
 {
   if [ "$1"x = ""x ];then
-    return
+      return
   fi
 
   echo $1|sed -e 's/_/\\u/gp' -e 's/\./%e/gp' -e 's/%/%p/gp'|head -n 1
@@ -290,14 +293,14 @@ function check_osd_process()
   local func="check_osd_process"
   local host=$1
   if [ "$1"x = ""x ];then
-    exit
+      exit
   fi
   local cmds="ps aux|grep ceph-osd|grep -v grep"
   local ret=/tmp/ret.$$$$
   ssh $ssh_option $host $cmds |tee $ret
   if [ -s $ret ];then
-    echo "$func: [$host] ceph-osd process is not killed"
-    exit
+      echo "$func: [$host] ceph-osd process is not killed"
+      exit
   fi
   rm -f $ret 
 }
@@ -311,14 +314,14 @@ function get_map_header_key()
 {
   local func="get_map_header_key"
   if [ "$1"x = ""x ];then
-    #echo $func': no keyword input'
-    exit 
+      #echo $func': no keyword input'
+      exit 
   fi 
   local keyword=$1
   local res=`cat $omap_list| grep $keyword`
   if [ "$res"x = ""x ];then
-    #echo "$func: map_header_key = $keyword not exisits"
-    exit
+      #echo "$func: map_header_key = $keyword not exisits"
+      exit
   fi
   echo $res|awk -F ":" '{print $2}'
 }
@@ -327,11 +330,11 @@ function get_header_seq()
 {
   local func="get_header_seq"
   if [ "$1"x == ""x ];then
-    #echo "$func: no prefix input"
-    exit;
+      #echo "$func: no prefix input"
+      exit;
   elif [ "$2"x == ""x ];then
-    #echo "$func: no key input"
-    exit;
+      #echo "$func: no key input"
+      exit;
   fi
   local prefix=$1;
   local key=$2;
@@ -339,8 +342,8 @@ function get_header_seq()
 
   ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
   if [ $? != 0 ]; then
-    #echo "$func: <$prefix , $key> not exists" ;
-    exit;
+      #echo "$func: <$prefix , $key> not exists" ;
+      exit;
   fi
 
   # ceph-kvstore-tool get result like this:
@@ -366,8 +369,8 @@ function get_header_seq()
    print seq
   }'`
   if [ "$seq"x = ""x ];then
-    #echo "$func: get <$prefix , $key> failed"
-    exit;
+      #echo "$func: get <$prefix , $key> failed"
+      exit;
   fi
   rm -f $res
   echo $((16#$seq))
@@ -378,14 +381,14 @@ function get_header_kv()
 {
   local func="get_header_kv"
   if [ "$1"x = ""x ];then
-    #echo "$func: no prefix input"
-    exit
+      #echo "$func: no prefix input"
+      exit
   elif [ "$2"x = ""x ];then
-    #echo "$func: no key input"
-    exit
+      #echo "$func: no key input"
+      exit
   elif [ "$3"x != "string"x ] && [ "$3"x != "int"x ];then
-    #echo "$func: no valid type input, use type (string|int)"
-    exit
+      #echo "$func: no valid type input, use type (string|int)"
+      exit
   fi
 
   local prefix=$1
@@ -395,15 +398,15 @@ function get_header_kv()
 
   ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
   if [ $? != 0 ];then
-    #echo "$func: <$prefix , $key> not exists" 
-    exit
+      #echo "$func: <$prefix , $key> not exists" 
+      exit
   fi
 
   if [ "$types"x = "string"x ];then
-    local value=`cat $res |tail -n +2|head -n -1|awk -F ": " '{printf $3}'|sed -n 's/^\.\{4\}//p'`
-    echo $value
+      local value=`cat $res |tail -n +2|head -n -1|awk -F ": " '{printf $3}'|sed -n 's/^\.\{4\}//p'`
+      echo $value
   elif [ "$types"x = "int"x ];then
-    local value=`cat $res |tail -n +2|head -n -1| \
+      local value=`cat $res |tail -n +2|head -n -1| \
       awk '
         BEGIN{
           FS=":"
@@ -414,7 +417,7 @@ function get_header_kv()
                 printf arr[i];
           }
         }'`
-    echo $((16#$value))
+      echo $((16#$value))
   fi
   rm -f $res
 }

@@ -1,3 +1,6 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 # file: osd_job
 #
@@ -38,16 +41,16 @@ function check_ceph_osd()
 
   # use systemctl if available
   if [ -x /bin/systemctl ]; then
-    if [ `systemctl --host=$host --quiet is-active ceph-osd.target` >= 0 ]; then
-	#systemctl stop ceph-osd.target;
-	echo "[$host]: $func: ceph-osd is running ... "
-        echo "please deactivate it, before we can proceed"
-	exit
-    fi
+      if [ `systemctl --host=$host --quiet is-active ceph-osd.target` >= 0 ]; then
+	  #systemctl stop ceph-osd.target;
+	  echo "[$host]: $func: ceph-osd is running ... "
+          echo "please deactivate it, before we can proceed"
+	  exit
+      fi
   else
     if [ "`ps aux|grep ceph-osd|grep -v flush-journal|grep -v grep`"x != ""x ]; then
-      echo "[$host]: $func: ceph-osd is running..., stop it"
-      exit 
+	echo "[$host]: $func: ceph-osd is running..., stop it"
+	exit 
     fi
   fi
 }
@@ -56,11 +59,11 @@ function cat_image_v1()
 {
   local func="cat_image_v1" 
   if [ $debug ]; then
-     echo "$func ..."
+      echo "$func ..."
   fi
   init_env_osd $1
   if [ -e $image_v1 ]; then
-    cat $image_v1
+      cat $image_v1
   fi
 } 
 
@@ -68,11 +71,11 @@ function cat_image_v2()
 {
   local func="cat_image_v2" 
   if [ $debug ]; then
-     echo "$func ..."
+      echo "$func ..."
   fi
   init_env_osd $1
   if [ -e $image_v2 ]; then
-    cat $image_v2
+      cat $image_v2
   fi
 } 
 
@@ -94,8 +97,8 @@ function do_omap_list()
   local osd_data_path=$osd_data
   local whoami_path=$osd_data/whoami
   if [ ! -e $whoami_path ]; then
-    echo "[$host]: $func: $whoami_path does not exists"
-    exit
+      echo "[$host]: $func: $whoami_path does not exists"
+      exit
   fi
   local whoami=`cat $whoami_path`
   echo "[$host]: $func for osd.$whoami ..."
@@ -111,29 +114,29 @@ function do_pg_epoch()
   local node=`hostname`
   local whoami_path=$osd_data/whoami
   if [ ! -e $whoami_path ]; then
-    echo "[$host]: $func: $whoami_path does not exists"
-    exit
+      echo "[$host]: $func: $whoami_path does not exists"
+      exit
   fi
   local whoami=`cat $whoami_path`
   echo "[$node]: $func for osd.$whoami ..."
   get_pgid_list
   >$node_pg_epoch
   if [ $debug ]; then
-    >$node_pg_header_seq
+      >$node_pg_header_seq
   fi
   local pgid=
   local data_path=
   while read line
   do
-  {
-    pgid=`echo $line|awk '{print $1}'`
-    data_path=`echo $line|awk '{print $2}'`
-    get_pg_epoch $pgid
-    echo -e "$node $pgid $pg_epoch $data_path" >>$node_pg_epoch
-  } 
+    {
+      pgid=`echo $line|awk '{print $1}'`
+      data_path=`echo $line|awk '{print $2}'`
+      get_pg_epoch $pgid
+      echo -e "$node $pgid $pg_epoch $data_path" >>$node_pg_epoch
+    } 
   done < $pgid_list
   if [ $debug ]; then
-    echo "[$host]: $func: node_pg_epoch -> node, pgid pg_epoch data_path"
+      echo "[$host]: $func: node_pg_epoch -> node, pgid pg_epoch data_path"
   fi
 
 }
@@ -157,8 +160,8 @@ function do_image_list()
   local host=`hostname`
   local whoami_path=$osd_data/whoami
   if [ ! -e $whoami_path ]; then
-    echo "[$host]: $func: $whoami_path does not exists"
-    exit
+      echo "[$host]: $func: $whoami_path does not exists"
+      exit
   fi
   local whoami=`cat $whoami_path`
   echo "[$host]: $func for osd.$whoami ..."
@@ -213,20 +216,20 @@ function flush_osd_journal()
   local whoami_path=$osd_data/whoami
   local host=`hostname`
   if [ ! -e $osd_journal_path ]; then
-    echo "[$host]: $func: $osd_journal_path does not exist"
-    exit
+      echo "[$host]: $func: $osd_journal_path does not exist"
+      exit
   fi
   if [ ! -e $whoami_path ]; then
-    echo "[$host]: $func: $whoami_path does not exist"
-    exit
+      echo "[$host]: $func: $whoami_path does not exist"
+      exit
   fi
   local whoami=`cat $whoami_path`
   echo "[$host]: $func for osd.$whoami ..."
   #ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null  2>/dev/null
   ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null
   if [ $? -ne 0 ]; then
-    echo "[$host]: $func: flush osd journal failed"
-    exit
+      echo "[$host]: $func: flush osd journal failed"
+      exit
   fi
 }
 

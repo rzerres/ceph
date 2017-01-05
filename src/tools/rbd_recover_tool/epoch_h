@@ -1,3 +1,6 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 # file: epoch_h
 #
@@ -27,8 +30,8 @@ my_dir=$(dirname "$0")
 function get_pgid_list()
 {
   find $osd_data/current/ -type d -name "*_head"|\
-	sed -n 's/\(.*\)\/current\/\([0-9a-fA-F]\+\.[0-9a-fA-F]\+\)_head/\2 \1/p'|\
-	sort -t ' ' -k 1.1,1h -k 2.1,2 > $pgid_list;
+      sed -n 's/\(.*\)\/current\/\([0-9a-fA-F]\+\.[0-9a-fA-F]\+\)_head/\2 \1/p'|\
+      sort -t ' ' -k 1.1,1h -k 2.1,2 > $pgid_list;
 }
 
 function get_pgid()
@@ -46,16 +49,16 @@ function get_infos_seq()
   local infos_key=`get_map_header_key $keyword`
 
   if [ "$infos_key"x = ""x ]; then
-    echo "$func: keyword not input or infos_key not exisits"
-    exit 
+      echo "$func: keyword not input or infos_key not exisits"
+      exit 
   fi
   local prefix=`get_map_header_prefix`
   local key=$infos_key
 
   infos_seq=`get_header_seq $prefix $key`
   if [ "$infos_seq"x = ""x ]; then
-    echo "$func: infos_seq not exists"
-    exit
+      echo "$func: infos_seq not exists"
+      exit
   fi
 }
 
@@ -64,8 +67,8 @@ function get_pg_epoch()
 {
   local func="get_pg_epoch"
   if [ "$1"x = ""x ]; then
-    echo "$func: no pgid input"
-    exit
+      echo "$func: no pgid input"
+      exit
   fi
 
   ###
@@ -73,10 +76,10 @@ function get_pg_epoch()
   ###
   get_pg_epoch_firefly "$1"
   if [ "$pg_epoch"x != ""x ]; then
-    #if [ $debug ]; then
-    #  echo "Epoch for $1: $pg_epoch (firefly)"
-    #fi
-    return
+      #if [ $debug ]; then
+      #  echo "Epoch for $1: $pg_epoch (firefly)"
+      #fi
+      return
   fi
 
   # since hammer: omap is using _HOBJTOSEQ_ as key
@@ -97,8 +100,8 @@ function get_pg_epoch_firefly()
 {
   local func="get_pg_epoch_firefly"
   if [ "$1"x = ""x ]; then
-    echo "$func: no pgid input"
-    exit
+      echo "$func: no pgid input"
+      exit
   fi
 
   # Metadata Definitions: https://github.com/ceph/ceph/blob/master/src/tools/rbd_recover_tool/metadata_h
@@ -120,8 +123,8 @@ function get_pg_epoch_hammer()
 {
   local func="get_pg_epoch_hammer"
   if [ "$1"x = ""x ]; then
-    echo "$func: no pgid input"
-    exit
+      echo "$func: no pgid input"
+      exit
   fi
 
   # Metadata Definitions: https://github.com/ceph/ceph/blob/master/src/tools/rbd_recover_tool/metadata_h

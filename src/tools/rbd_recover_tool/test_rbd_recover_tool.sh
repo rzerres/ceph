@@ -1,8 +1,12 @@
+# -*- mode:sh; tab-width:8; sh-basic-offset:2; indent-tabs-mode:t -*-
+# vim: ts=8 sw=2 smarttab
+
 #!/bin/bash
 #
-# Copyright (C) 2015 Ubuntu Kylin
-#
 # Author: Min Chen <minchen@ubuntukylin.com>
+# Extended: Ralf Zerres <ralf.zerres@networkx.de>
+#
+# Copyright (C) 2015-2017 Ubuntu Kylin
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Library Public License as published by
@@ -13,6 +17,9 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 # unit test case for rbd-recover-tool
@@ -47,9 +54,9 @@ function get_pool_id()
   local pool_id_file=/tmp/pool_id_file.$$$$
   ceph osd pool stats $pool|head -n 1|awk '{print $4}' >$pool_id_file
   if [ $? -ne 0 ];then
-    echo "$func: get pool id failed: pool = $pool"
-    rm -f $pool_id_file
-    exit
+      echo "$func: get pool id failed: pool = $pool"
+      rm -f $pool_id_file
+      exit
   fi
   pool_id=`cat $pool_id_file`
   echo "$func: pool_id = $pool_id"
@@ -60,20 +67,20 @@ function init()
 {
   local func="init"
   if [ $# -eq 0 ];then
-    echo "$func: must input <path> to storage images, enough disk space is good"
-    exit
+      echo "$func: must input <path> to storage images, enough disk space is good"
+      exit
   fi
   if [ ! -s $osd_host ];then
-    echo "$func: config/osd_host not exists or empty"
-    exit
+      echo "$func: config/osd_host not exists or empty"
+      exit
   fi
   if [ ! -s $mon_host ];then
-    echo "$func: config/mon_host not exists or empty"
-    exit
+      echo "$func: config/mon_host not exists or empty"
+      exit
   fi
   if [ ! -e $mds_host ];then
-    echo "$func: config/mds_host not exists"
-    exit
+      echo "$func: config/mds_host not exists"
+      exit
   fi
   test_dir=$1
   export_dir=$test_dir/export
@@ -97,8 +104,8 @@ function do_gen_database()
 {
   local func="do_gen_database"
   if [ -s $gen_db ] && [ `cat $gen_db` = 1 ];then
-    echo "$func: database already existed"
-    exit
+      echo "$func: database already existed"
+      exit
   fi
   bash $tool_dir/rbd-recover-tool database
   echo 1 >$gen_db 
@@ -110,9 +117,9 @@ function check_ceph_service()
   local func="check_ceph_service"
   local res=`cat $osd_host $mon_host $mds_host|sort -u|tr -d [:blank:]|xargs -n 1 -I @ ssh $ssh_opt @ "ps aux|grep -E \"(ceph-osd|ceph-mon|ceph-mds)\"|grep -v grep"`
   if [ "$res"x != ""x ];then
-    echo "$func: NOT all ceph services are stopped"
-    return 1
-    exit
+      echo "$func: NOT all ceph services are stopped"
+      return 1
+      exit
   fi
   echo "$func: all ceph services are stopped"
   return 0
@@ -124,14 +131,14 @@ function stop_ceph()
   #cat osd_host|xargs -n 1 -I @ ssh $ssh_opt @ "killall ceph-osd" 
   while read osd
   do
-  {
-    osd=`echo $osd|tr -d [:blank:]`
-    if [ "$osd"x = ""x ];then
-      continue
-    fi
-    #ssh $ssh_opt $osd "killall ceph-osd ceph-mon ceph-mds" </dev/null
-    ssh $ssh_opt $osd "killall ceph-osd" </dev/null
-  } &
+    {
+      osd=`echo $osd|tr -d [:blank:]`
+      if [ "$osd"x = ""x ];then
+	  continue
+      fi
+      #ssh $ssh_opt $osd "killall ceph-osd ceph-mon ceph-mds" </dev/null
+      ssh $ssh_opt $osd "killall ceph-osd" </dev/null
+    } &
   done < $osd_host
   wait
   echo "waiting kill all osd ..."
@@ -146,23 +153,23 @@ function create_image()
 {
   local func="create_image"
   if [ ${#} -lt 3 ];then
-    echo "create_image: parameters: <image_name> <size> <image_format>"
-    exit
+      echo "create_image: parameters: <image_name> <size> <image_format>"
+      exit
   fi
   local image_name=$1
   local size=$2
   local image_format=$3
   if [ $image_format -lt 1 ] || [ $image_format -gt 2 ];then
-    echo "$func: image_format must be 1 or 2"
-    exit
+      echo "$func: image_format must be 1 or 2"
+      exit
   fi
   local res=`rbd list|grep -E "^$1$"` 
   echo "$func $image_name ..."
   if [ "$res"x = ""x ];then
-    rbd -p $pool create $image_name --size $size --image_format $image_format
+      rbd -p $pool create $image_name --size $size --image_format $image_format
   else
     if [ $image_format -eq 2 ];then
-      rbd snap ls $image_name|tail -n +2|awk '{print $2}'|xargs -n 1 -I % rbd snap unprotect $image_name@%
+	rbd snap ls $image_name|tail -n +2|awk '{print $2}'|xargs -n 1 -I % rbd snap unprotect $image_name@%
     fi
     rbd snap purge $image_name
     #rbd rm $image_name
@@ -175,8 +182,8 @@ function export_image()
   local func="export_image"
 
   if [ $# -lt 2 ];then
-    echo "$func: parameters: <image_name> <image_format> [<image_size>]"
-    exit
+      echo "$func: parameters: <image_name> <image_format> [<image_size>]"
+      exit
   fi
 
   local image_name=$1
@@ -184,30 +191,30 @@ function export_image()
   local size=$(($3)) #MB
   
   if [ $format -ne 1 ] && [ $format -ne 2 ];then
-    echo "$func: image format must be 1 or 2"
-    exit
+      echo "$func: image format must be 1 or 2"
+      exit
   fi
 
   if [ $size -eq 0 ];then
-    size=24 #MB
-    echo "$func: size = $size"
+      size=24 #MB
+      echo "$func: size = $size"
   fi
   local mnt=/rbdfuse 
 
   mount |grep "rbd-fuse on /rbdfuse" &>/dev/null
   if [ $? -ne 0 ];then
-    rbd-fuse $mnt
+      rbd-fuse $mnt
   fi
-    
+  
   create_image $image_name $size $format
- 
+  
   dd conv=notrunc if=/dev/urandom of=$mnt/$image_name bs=4M count=$(($size/4))
   
   local export_image_dir=$export_dir/pool_$pool_id/$image_name
   mkdir -p $export_image_dir
   local export_md5_nosnap=$export_image_dir/@md5_nosnap
   >$export_md5_nosnap
- 
+  
   local export_image_path=$export_image_dir/$image_name
   rm -f $export_image_path
 
@@ -219,8 +226,8 @@ function recover_image()
 {
   local func="recover_snapshots"
   if [ $# -lt 1 ];then
-    echo "$func: parameters: <image_name>"
-    exit
+      echo "$func: parameters: <image_name>"
+      exit
   fi
 
   local image_name=$1
@@ -240,8 +247,8 @@ function make_snapshot()
 {
   local func="make_snapshot"
   if [ $# -lt 5 ];then
-    echo "$func: parameters: <ofile> <seek> <count> <snap> <export_image_dir>"
-    exit
+      echo "$func: parameters: <ofile> <seek> <count> <snap> <export_image_dir>"
+      exit
   fi
   local ofile=$1
   local seek=$(($2))
@@ -250,13 +257,13 @@ function make_snapshot()
   local export_image_dir=$5
 
   if [ $seek -lt 0 ];then
-    echo "$func: seek can not be minus"
-    exit
+      echo "$func: seek can not be minus"
+      exit
   fi
 
   if [ $count -lt 1 ];then
-    echo "$func: count must great than zero"
-    exit
+      echo "$func: count must great than zero"
+      exit
   fi
 
   echo "[$snap] $func ..."
@@ -265,7 +272,7 @@ function make_snapshot()
   
   local res=$?
   if [ $res -eq 0 ];then
-    return $res
+      return $res
   fi
 
   dd conv=notrunc if=/dev/urandom of=$ofile bs=1M count=$count seek=$seek 2>/dev/null
@@ -282,8 +289,8 @@ function recover_snapshots()
 {
   local func="recover_snapshots"
   if [ $# -lt 1 ];then
-    echo "$func: parameters: <image_name>"
-    exit
+      echo "$func: parameters: <image_name>"
+      exit
   fi
 
   local image_name=$1
@@ -316,8 +323,8 @@ function export_snapshots()
   local func="export_snapshots"
 
   if [ $# -lt 2 ];then
-    echo "$func: parameters: <image_name> <image_format> [<image_size>]"
-    exit
+      echo "$func: parameters: <image_name> <image_format> [<image_size>]"
+      exit
   fi
 
   local image_name=$1
@@ -325,21 +332,21 @@ function export_snapshots()
   local size=$(($3)) #MB
   
   if [ $format -ne 1 ] && [ $format -ne 2 ];then
-    echo "$func: image format must be 1 or 2"
-    exit
+      echo "$func: image format must be 1 or 2"
+      exit
   fi
 
   if [ $size -eq 0 ];then
-    size=24 #MB
-    echo "$func: size = $size"
+      size=24 #MB
+      echo "$func: size = $size"
   fi
   local mnt=/rbdfuse 
 
   mount |grep "rbd-fuse on /rbdfuse" &>/dev/null
   if [ $? -ne 0 ];then
-    rbd-fuse $mnt
+      rbd-fuse $mnt
   fi
-    
+  
   create_image $image_name $size $format
   
   local export_image_dir=$export_dir/pool_$pool_id/$image_name
@@ -375,21 +382,21 @@ function check_recover_nosnap()
 {
   local func="check_recover_nosnap"
   if [ $# -lt 3 ];then
-    echo "$func: parameters: <export_md5_file> <recover_md5_file> <image_name>"
+      echo "$func: parameters: <export_md5_file> <recover_md5_file> <image_name>"
   fi
   local export_md5=$1
   local recover_md5=$2
   local image_name=$3
 
   local ifpassed="FAILED"
- 
+  
   echo "================ < $image_name nosnap > ================" 
 
   local export_md5sum=`cat $export_md5` 
   local recover_md5sum=`cat $recover_md5` 
 
   if [ "$export_md5sum"x != ""x ] && [ "$export_md5sum"x = "$recover_md5sum"x ];then
-    ifpassed="PASSED"
+      ifpassed="PASSED"
   fi
   echo "export:  $export_md5sum"
   echo "recover: $recover_md5sum $ifpassed"
@@ -399,14 +406,14 @@ function check_recover_snapshots()
 {
   local func="check_recover_snapshots"
   if [ $# -lt 3 ];then
-    echo "$func: parameters: <export_md5_file> <recover_md5_file> <image_name>"
+      echo "$func: parameters: <export_md5_file> <recover_md5_file> <image_name>"
   fi
   local export_md5=$1
   local recover_md5=$2
   local image_name=$3
 
   local ifpassed="FAILED"
- 
+  
   echo "================ < $image_name snapshots > ================" 
 
   OIFS=$IFS
@@ -424,7 +431,7 @@ function check_recover_snapshots()
     local recover_arr=(`echo ${recover_md5s[$i]}`)
     echo "export:  ${export_md5s[$i]}"
     if [ "${export_arr[1]}"x != ""x ] && [ "${export_arr[1]}"x = "${recover_arr[1]}"x ];then
-      ifpassed="PASSED"
+	ifpassed="PASSED"
     fi
     echo "recover: ${recover_md5s[$i]} $ifpassed"
     IFS=$OOIFS
