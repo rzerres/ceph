@@ -454,7 +454,8 @@ function usage () {
   echo "  --node-job-path	destination-path storing scripts to run on each osd-node"
   echo "  --node-data-path	destination-path storing collected osd data"
   echo "  -d | --debug		enable debug output"
-  echo "  -v | --debug		enable debug output"
+  echo "  -v | --verbose	enable verbose output"
+  echo "  --version     	show version number"
   exit 0
 }
 
@@ -511,6 +512,9 @@ case $mode in
   "recover")
     #init_env
     recover $pool_id $image_name $snap_name $image_dir
+    ;;
+  *)  # no mode given, show usage
+    usage
     ;;
 esac
 
