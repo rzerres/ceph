@@ -1,6 +1,8 @@
 
-1. support for clone images
-2. cleanup snapshot handling
-3. refine restore methods
-4. support for rbd-objects with non-default stipe_unit, stipe_count 
+Unorderd lists of TODO's
 
+* support for rbd-objects with non-default stipe_unit, stipe_count 
+   ref: https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.cc#L686
+* cleanup snapshot handling
+* refine restore methods
+* support for clone images
