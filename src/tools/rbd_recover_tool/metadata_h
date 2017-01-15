@@ -285,13 +285,37 @@ function get_meta_header_seq()
   fi
 }
 
-# get image metadata : object_prefix, order, image_size, snap_seq
-object_prefix=
-order=
-image_size=
-snap_seq=
 function get_image_metadata_v2()
 {
+  # ~ceph/ceph/tree/master/src/include/rbd/librbd.h
+  # typedef struct {
+  # uint64_t size;
+  # uint64_t obj_size;
+  # uint64_t num_objs;
+  # int      order;
+  # char     block_name_prefix[RBD_MAX_BLOCK_NAME_SIZE]; /* deprecated */
+  # int64_t  parent_pool;			         /* deprecated */
+  # char     parent_name[RBD_MAX_IMAGE_NAME_SIZE];       /* deprecated */
+  #} rbd_image_info_t;
+
+  # /* image options */
+  # enum {
+  #  RBD_IMAGE_OPTION_FORMAT = 0,
+  #  RBD_IMAGE_OPTION_FEATURES = 1,
+  #  RBD_IMAGE_OPTION_ORDER = 2,
+  #  RBD_IMAGE_OPTION_STRIPE_UNIT = 3,
+  #  RBD_IMAGE_OPTION_STRIPE_COUNT = 4,
+  #  RBD_IMAGE_OPTION_JOURNAL_ORDER = 5,
+  #  RBD_IMAGE_OPTION_JOURNAL_SPLAY_WIDTH = 6,
+  #  RBD_IMAGE_OPTION_JOURNAL_POOL = 7,
+  #  RBD_IMAGE_OPTION_FEATURES_SET = 8,
+  #  RBD_IMAGE_OPTION_FEATURES_CLEAR = 9,
+  #  RBD_IMAGE_OPTION_DATA_POOL = 10
+  #};
+
+  # CEPH_RBD_API int rbd_image_options_is_set(rbd_image_options_t opts,
+  #                                           int optname, bool* is_set);  
+
   local func="get_image_metadata_v2"
   if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
