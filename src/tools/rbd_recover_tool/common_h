@@ -54,6 +54,7 @@ image_v1= #$single_node/$cluster-$id/image_v1
 image_v2= #$single_node/$cluster-$id/image_v2
 pgid_list= #$single_node/$cluster-$id/pgid_list
 node_pg_epoch= #$single_node/$cluster-$id/node_pg_epoch
+node_pg_header_seq= #$single_node/$cluster-$id/node_pg_header_seq
 omap_list= #$single_node/$cluster-$id/omap_list 
 
 # admin node config file
@@ -141,6 +142,7 @@ function init_env_osd()
   image_v2=$osd_dir/image_v2
   pgid_list=$osd_dir/pgid_list
   node_pg_epoch=$osd_dir/node_pg_epoch
+  node_pg_header_seq=$osd_dir/node_pg_header_seq
   omap_list=$osd_dir/omap_list
 }
 
