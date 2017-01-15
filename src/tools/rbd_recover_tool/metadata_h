@@ -411,10 +411,10 @@ function list_snapshots_v2()
 
   # struct cls_rbd_snap {
   # 	snapid_t id;
-  #	string name;
+  #	string   name;
   #	uint64_t image_size;
   #	uint64_t features;
-  #	uint8_t protection_status;
+  #	uint8_t  protection_status;
   #	cls_rbd_parent parent;
   # }
 
@@ -431,12 +431,12 @@ function list_snapshots_v2()
   # ......
 
   local func="list_snapshots_v2"
-  if [ "$1"x = ""x ];then
+  if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
   fi
   local sname=
-  if [ $# -eq 2 ];then
+  if [ $# -eq 2 ]; then
       sname=$2
   fi
   if [ $debug ]; then
