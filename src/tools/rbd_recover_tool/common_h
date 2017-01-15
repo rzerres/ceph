@@ -420,49 +420,67 @@ function get_header_seq()
   local prefix=$1;
   local key=$2;
   local res=/tmp/header_seq.$$$$
-
-  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
+  local hexseq
+  local seq
+  
+  # ceph-kvstore-tool dumps values in hex (big-endian format)
+  # ($prefix, $key)
+  # (_HOBJTOSEQ_, ...head.0.00000011)
+  # 00000000  02 01 81 00 00 00 87 e4  12 00 00 00 00 00 00 00
+  # relevant seq is coded in uint64: 8 bytes (big-endian):
+  # -> 00 00 00 00 00 87 E4 12
+  # => 12 e4 87 00 00 00 00 00 
+  # use xxd to process the hex dump
+  # finally transform the hex output to the needed integer
+  # header_seq = echo $((16#000000000012e487)) -> 1238151
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
   if [ $? != 0 ]; then
-      #echo "$func: <$prefix , $key> not exists" ;
       exit;
   fi
-
-  # ceph-kvstore-tool get result like this:
-  # 02 01 7e 00 00 00 12 44 00 00 00 00 00 00 00 00
-  # get header seq bytes: 
-  # 12 44 00 00 00 00 00 00 
-  # -> 00 00 00 00 00 00 44 12 
-  # echo $((16#0000000000004412)) -> 17426 == header_seq
-  local seq=`cat $res |head -n 2|tail -n 1| \
-  awk '
-  BEGIN {
-    FS=":"
-    seq="";
-    i=7;
-  } {
-    split($2, arr, " ")  
-    # header_seq uint64 : 8 bytes
-    for (x=7; x>=0; --x) {
-      seq=seq""arr[i+x];
-   }
-  }
-  END {
-   print seq
-  }'`
-  if [ "$seq"x = ""x ];then
-      #echo "$func: get <$prefix , $key> failed"
-      exit;
+  #seq=`cat $res |head -n 2|tail -n 1| \
+  #awk '
+  #BEGIN {
+  #  FS="00000000";
+  #  seq="";
+  #  i=7;
+  #} {
+  #  split($2, arr, " "); 
+  #  # header_seq uint64 : 8 bytes
+  #  for (x=7; x>=0; --x) {
+  #    seq=seq""arr[i+x];
+  #  }
+  #}
+  #END {
+  # print seq
+  #}'`
+  # process dump: offset 6, switch next 8 octets to little endian 
+  hexseq=`xxd -c 16 -seek 6 -len 8 -e $res | \
+       awk 'BEGIN { -F ":" } { print $2; }'`
+  seq=`printf "%d" 0x$hexseq`
+  if [ "$seq"x = ""x ]; then
+    exit;
   fi
   rm -f $res
-  echo $((16#$seq))
+  echo $seq
 }
 
 # get header info key/value
 function get_header_kv()
 {
   local func="get_header_kv"
-  if [ "$1"x = ""x ];then
-      #echo "$func: no prefix input"
+  local prefix=$1
+  local key=$2
+  local type=$3
+  local seek=$4
+  local len=$5
+  local res=/tmp/kv.$$$$
+  local hexvalue
+  local value
+  
+  if [ -z $prefix ]; then
+      if [ $debug ]; then
+	  echo "$func: ceph-kvstore-tool needs a valid object prefix"
+      fi
       exit
   elif [ -z $key ]; then
       if [ $debug ]; then
@@ -476,33 +494,32 @@ function get_header_kv()
       exit
   fi
 
-  local prefix=$1
-  local key=$2
-  local types=$3
-  local res=/tmp/kv.$$$$
-
-  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
-  if [ $? != 0 ];then
-      #echo "$func: <$prefix , $key> not exists" 
+  # values are dumped in hex (big-endian format)
+  #ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
+  if [ $? != 0 ]; then
+      if [ $debug ]; then
+	  echo "$func: error -> ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key"
+      fi
       exit
   fi
 
-  if [ "$types"x = "string"x ];then
-      local value=`cat $res |tail -n +2|head -n -1|awk -F ": " '{printf $3}'|sed -n 's/^\.\{4\}//p'`
-      echo $value
-  elif [ "$types"x = "int"x ];then
-      local value=`cat $res |tail -n +2|head -n -1| \
-      awk '
-        BEGIN{
-          FS=":"
-        } {
-          split($2, arr, " ");
-          len=length(arr)
-          for (i=len; i>0; --i) { 
-                printf arr[i];
-          }
-        }'`
-      echo $((16#$value))
+
+  if [ "$type"x = "string"x ]; then
+    # process dump: offset 4, switch next 24 octets
+    test -z $seek && seek=4;
+    test -z $len && len=24;
+    value=`xxd -seek $seek -len $len -p $res | xxd -r -p`
+  elif [ "$type"x = "int"x ]; then
+   test -z $seek && seek=0;
+   test -z $len && len=8;
+   hexvalue=`xxd -seek $seek -len $len -e -p $res`
+   value=`printf "%d" 0x$hexvalue`
   fi
+  #if [ $debug ]; then
+  #    echo "\n[debug] $func: key: $prefix -> value: $value>"
+  #fi
   rm -f $res
+  echo $value
+  #echo $__result
 }
