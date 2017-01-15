@@ -346,13 +346,22 @@ function get_image_metadata_v2()
   # list features
   list_features_v2 $1
   
-  # get stripe_unit; stripe_count
-  # ceph-objectstore_tool
-  # Must provide
-  # --op (info, log, remove, mkfs, fsck, export, import, list, \
-      #       fix-lost, list-pgs, rm-past-intervals, dump-journal, dump-super, meta-list, \
-      #       get-osdmap, set-osdmap, get-inc-osdmap, set-inc-osdmap, mark-complete)
-  
+  # ??? TODO: how about parent / overlap / protection?
+  # // information about our parent image, if any
+  # struct cls_rbd_parent {
+  #   int64_t pool;        ///< parent pool id
+  #   string id;           ///< parent image id
+  #   snapid_t snapid;     ///< parent snapid we refer to
+  #   uint64_t overlap;    ///< portion of this image mapped onto parent (bytes)
+  #
+  #   /// true if our parent pointer information is defined
+  #   bool exists() const {
+  #     return snapid != CEPH_NOSNAP && pool >= 0 && id.length() > 0 && overlap > 0;
+  #   }
+    
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L113
+  # list_parent_v2 $1
+
   # list snapshot
   list_snapshots_v2 $1 $2
 }
