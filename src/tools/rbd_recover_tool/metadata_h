@@ -390,43 +390,87 @@ function list_features_v2()
   if [ $verbose ]; then
       echo "$func: get feature-mask ..."
   fi
-  local t_host_remote[0]="layering"
-  local t_host_remote[1]="striping"
-  local t_host_remote[2]="exclusive-lock"
-  local t_host_remote[3]="object-map"
-  local t_host_remote[4]="fast-diff"
-  local t_host_remote[5]="deep-flatten"
-  local t_host_remote[6]="journaling"
-  local t_host_remote[7]="data-pool"
-  local feature_list=
+
+  local rbd_feature_name_layering="layering"
+  local rbd_feature_name_striping="striping"
+  local rbd_feature_name_exclusive_lock="exclusive-lock"
+  local rbd_feature_name_object_map="object-map"
+  local rbd_feature_name_fast_diff="fast-diff"
+  local rbd_feature_name_deep_flatten="deep-flatten"
+  local rbd_feature_name_journaling="journaling"
+  local rbd_feature_name_data_pool="data-pool"
+
+  # bash has no multidemensional arrays,
+  # we rely on a assosiative declaration
+  declare -a rbd_feature_name
+  rbd_feature_name=(
+    $rbd_feature_name_layering
+    $rbd_feature_name_striping
+    $rbd_feature_name_exclusive_lock
+    $rbd_feature_name_object_map
+    $rbd_feature_name_fast_diff
+    $rbd_feature_name_deep_flatten
+    $rbd_feature_name_journaling
+    $rbd_feature_name_data_pool
+  )
+
+  local features_max=${#rbd_feature_name[@]}
+  local feature_list
+  local features_active=0
+
+  declare -a rbd_feature_value
+  eval "rbd_feature_value=( $(for ((i=0; i<=$features_max; i++)) do echo 0; done) )"
 
   if [ $debug ]; then
-      echo "$func: get feature-mask ..."
-      echo "$func: get_header_kv $prefix featrues init 0 1)"
+      echo "$func: get_header_kv $prefix features init 0 1)"
   fi
   local feature_mask=$(get_header_kv $prefix features int 0 1)
-
-  echo -e -n "feature-mask:\t$feature_mask "
+  echo -e "feature-mask:\t$feature_mask"
   
-  for ((i=7; i>=0; i--))
-  do
+  # evaluate if rbd_feature_names is active
+  for ((i=$features_max; i>=0; i--)); do
     value=$((2**$i))
     if [ $feature_mask -ge $value ]; then
-	if [ $value -eq 1 ]; then
-	    feature_list="$feature_list${t_host_remote[$i]}"
-	else
-	  feature_list="$feature_list${t_host_remote[$i]}, "
-	fi
+	rbd_feature_value[$i]=1
+	features_active=$(($features_active+1))
 	feature_mask=$((feature_mask-value))
     fi
   done
 
-  echo -e "(${feature_list})"
+  # create comma seperated list of active rbd_feature_names
+  y=0;
+  for ((i=0; i<$features_max; i++)); do
+    if [ ${rbd_feature_value[$i]} = 1 ]; then
+	y=$((y+1))
+	if [ $y -lt $features_active ]; then
+	    feature_list="$feature_list${rbd_feature_name[$i]}, "
+	else
+	  feature_list="$feature_list${rbd_feature_name[$i]}"
+	fi
+    fi
+  done
+  
+  echo -e "feature_list:\t(${feature_list})"
+
+  # if striping is enabled, get stripe_unit and stript_count
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.cc#L679
+  # uint64_t stripe_unit;
+  # uint8_t stripe_unit;
+  stripe_unit=
+  stripe_unit=$(get_header_kv $prefix stripe_unit int 0 5)
+  stripe_count=$(get_header_kv $prefix stripe_count int 0 1)
+  #stripe_size=$(get_header_kv $prefix size int 4) 
+  
+  if [ ${rbd_feature_value[2]} = 1 ]; then
+      echo -e "stripe_unit:\t$stripe_unit"
+      echo -e "stripe_count:\t$stripe_count"
+      #echo -e "stripe_size:\t$stripe_size"
+  fi
 }
 
 function list_snapshots_v2()
 {
-  # ~ceph/ceph/blob/master/src/include/rbd/librbd.h
+  # ~ceph/ceph/tree/master/src/include/rbd/librbd.h
   # typedef struct {
   #   uint64_t id;
   #   uint64_t size;
