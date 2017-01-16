@@ -334,25 +334,28 @@ function cleanup()
 
 function database()
 {
-  scatter_gather
   gen_database
+  scatter_gather
 }
 
 function list()
 {
-  init_env_nodes
+  #init_env_nodes
+  #gather_node_infos
   list_images
 }
 
 function lookup()
 {
-  init_env_nodes
+  #init_env_nodes
+  # process rbd image-metadata: <pool-id> <rbd-name> <snap-name>
   lookup_image $1 $2 $3
 }
 
 function recover()
 {
-  init_env_nodes
+  #init_env_nodes
+  # recover rbd object: <pool-id> <rbd-name> <snap-name> <dest-path>
   recover_image $1 $2 $3 $4
 }
 
@@ -447,17 +450,59 @@ function parse_params () {
   while :
   do
     case $1 in
-      -h | --help | \-\? | --usage)
-        #  Call usage() function.
-        usage
-        ;;
       --admin-config-path=*)
         config_path=${1#*=}
         shift
+	if [ -z "$config_path" ]; then
+	    echo "$func: --admin-config-path: no positional argument given."
+	    exit 1
+	else
+          shift
+	  if [ ! -d $config_path ]; then
+	      echo "$func: given config-path $config_path does not exist!"
+	      exit 1
+	  else
+	    update_config_file $my_dir/common_h rbd_config $config_path
+	  fi
+	fi
         ;;
-      --admin-image-path=*)
-        rbd_image=${1#*=}
+      --admin-config-path)
+        config_path=$2
+	if [ -z "$config_path" ]; then
+	    echo "$func: --admin-config-path: no positional argument given."
+	    exit 1
+	else
+          shift 2
+	  if [ ! -d $config_path ]; then
+	      echo "$func: given config-path $config_path does not exist!"
+	      exit 1
+	  else
+	    update_config_file $my_dir/common_h rbd_config $config_path
+	  fi
+	fi
+        ;;
+      --rbd-recover-home=*)
+        rbd_recover_home=${1#*=}
         shift
+	if [ ! -d $rbd_recover_home ]; then
+	    echo "$func: will create $rbd_recover_home"
+	    mkdir -p $rbd_recover_home
+	fi
+	update_config_file $my_dir/common_h rbd_recover_home $rbd_recover_home
+        ;;
+      --rbd-recover-home)
+        rbd_recover_home=$2
+	if [ -z "$rbd_recover_home" ]; then
+	    echo "$func: --rbd_recover_home: no positional argument given."
+	    exit 1
+	else
+          shift 2
+	  if [ ! -d $rbd_recover_home ]; then
+	      echo "$func: will create $rbd_recover_home"
+	      mkdir -p $rbd_recover_home
+	  fi
+	  update_config_file $my_dir/common_h rbd_recover_home $rbd_recover_home
+	fi
         ;;
       -d | --debug)
         debug=1
@@ -477,6 +522,30 @@ function parse_params () {
 	else
           shift 2
 	  parse_mode_args $1
+	fi
+        ;;
+      cleanup|init|database|list|lookup|recover)
+	mode=$1
+	shift
+	parse_mode_args $1
+	;;
+      --kvdb-type=*)
+        kvdb_type=${1#*=}
+        shift
+	  if [ ! -z $kvdb_type ]; then
+	    update_config_file $my_dir/common_h kvdb_type $kvdb_type
+	  fi
+        ;;
+      --kvdb-type)
+        kvdb_type=$2
+	if [ -z "$kvdb_type" ]; then
+	    echo "$func: --kvdb-type: no positional argument given."
+	    exit 1
+	else
+          shift 2
+	  if [ ! -z $kvdb_type ]; then
+	    update_config_file $my_dir/common_h kvdb_type $kvdb_type
+	  fi
 	fi
         ;;
       --node-job-path=*)
@@ -506,6 +575,10 @@ function parse_params () {
         version
         shift
         ;;
+      -h | --help | \-\? | --usage)
+        #  Call usage() function.
+        usage
+        ;;
       --) # End of all options
         shift
         break
@@ -521,13 +594,19 @@ function parse_params () {
     esac
   done
 
+  # reread config after argument processing
+  . $my_dir/common_h
+  
   if [ $verbose ]; then
       echo "Admin RBD Config-Path:    $config_path"
+      echo "Admin RBD Recover-Home:   $rbd_recover_home"
+      echo "Admin RBD Metadata:       $rbd_metadata"
       echo "Admin RBD Image-Path:     $images"
       echo "Admin RBD Database-Path:  $database"
       #echo "Admin RBD Image-Dir:      $image_dir"
       echo "Node  OSD Job-Path:       $job_path"
       echo "Node  OSD Data-Path:      $single_node"
+      echo "KeyValue DB-Type:         $kvdb_type"
       echo "SSH   Options:            $ssh_option"
 
       rbd_options="verbose=true";
@@ -538,6 +617,30 @@ function parse_params () {
   fi
 }
 
+function update_config_file()
+{
+  local func="update_config_file"
+
+  local config_file=$1
+  local t_key=$2
+  local t_value=$3
+  local t_config_file=/tmp/tmp_header_file.$$$$
+  
+  if [ "$1"x = ""x ];then
+      echo "$func: missing parameter <config_file>"
+      exit
+  elif [ ! -w "$1" ];then
+      echo "$func: Key $t_key can't be updated in config-file $1"
+      exit
+  fi
+  cat $config_file | sed -e "s#$t_key=.*#$t_key=$t_value#" > $t_config_file
+  if [ ! -z $t_config_file ]; then
+      cp $t_config_file $config_file
+      rm $t_config_file
+  fi
+}   
+ 
+
 function usage () {
   echo "usage: $progname ..."
   echo
@@ -546,7 +649,7 @@ function usage () {
         asure noninvasive side effects."
   echo 
   echo "Positional argument:"
-  echo "  -m | --mode <run type>"
+  echo "  [ -m | --mode ] <command>"
   echo "    cleanup
 		    	remove environment on admin-node
 			remove environment ond osd-nodes"
@@ -581,9 +684,15 @@ function usage () {
 			2. rollback to image snap"
   echo "Optional arguments:"
   echo "  --admin-config-path	location of config definitions"
-  echo "  --admin-image-path	destination-path storing collected rbd images"
+  echo "                        (default: $config_path)"
+  echo "  --rbd-recover-home	home-path storing rbd-recover-tool data"
+  echo "                        (default: $rbd_recover_home)"
+  echo "  --kvdb-type   	database-type storing the key-value data"
+  echo "                        (default: $kvdb_type)"
   echo "  --node-job-path	destination-path storing scripts to run on each osd-node"
-  echo "  --node-data-path	destination-path storing collected osd data"
+  echo "                        (default: $job_path)"
+  echo "  --node-data-path	destination-path storing metadata on given osd-node"
+  echo "                        (default: $single_node)"
   echo "  -d | --debug		enable debug output"
   echo "  -v | --verbose	enable verbose output"
   echo "  --version     	show version number"
@@ -602,11 +711,15 @@ function version () {
 progname=`basename $0`
 
 my_dir=$(dirname "$0")
+config_path=$my_dir/config
 
-. $my_dir/common_h
-. $my_dir/metadata_h
-. $my_dir/epoch_h
+# initialize with defaults
 . $my_dir/database_h
+# this inculdes
+# +---> metadata_h
+#   +-> epoch_h
+#   +-> common_h
+
 
 #scp files from admin node to osd node
 file1=$my_dir/common_h
