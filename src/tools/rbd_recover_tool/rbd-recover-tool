@@ -193,7 +193,7 @@ function cleanup_env_nodes()
       do
 	# on each osd-node: cleanup the environment
 	echo "[$host]: osd-node -> cleanup environment"
-	cmd="rm -rf $job_path"
+	cmd="rm -rf $job_path $single_node"
 	if [ $verbose ]; then
 	    echo "[$host]: ssh $ssh_option $host $cmd"
 	fi
@@ -216,11 +216,9 @@ function init_env_nodes()
   echo "$func: ..."
 
   trap 'echo $func failed; exit' INT HUP
+  # backgrounded ssh output need to be distinguished from calling shell (here: <&5)
   while IFS=$' \t\n' read -r host data_path <&5
   do
-    #host=`echo $line|awk '{print $1}'`
-    #data_path=`echo $line|awk '{print $2}'`
-
     # on each osd-node: setup the environment
     if [ "$host" != "$lasthost" ]; then
 	lasthost=$host
@@ -363,15 +361,15 @@ function recover()
 function get_path()
 {
   local func="get_path"
-  if [ $# -lt 1 ];then
+  if [ $# -lt 1 ]; then
       return
   fi
-  if [[ $1 =~ // ]];then
+  if [[ $1 =~ // ]]; then
       return # "/path//to" is invalid
   fi
   local parent=`dirname $1`
   local name=`basename $1`
-  if [ "$parent"x = "/"x ];then
+  if [ "$parent"x = "/"x ]; then
       echo "$parent$name"
   else
     echo -n "$parent/$name"
@@ -379,7 +377,7 @@ function get_path()
 }
 
 function parse_mode_args () {
-  local func="get_path"
+  local func="parse_mode_args"
 
   # check positional parameters for given mode
   case $mode in
@@ -387,15 +385,20 @@ function parse_mode_args () {
       pool_id=-1
       image_name=
       snap_name=
-      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
+      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]]; then
 	  pool_id="${BASH_REMATCH[1]}"
 	  image_name="${BASH_REMATCH[2]}"
-      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
+      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]]; then
           pool_id="${BASH_REMATCH[1]}"
 	  image_name="${BASH_REMATCH[2]}"
 	  snap_name="${BASH_REMATCH[3]}"
       else
-	echo "$func: $1 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
+	if [ -z $1 ]; then 
+	  echo "$func: given rbd-object is missing, use <pool_id>/<image_name>[@[<snap_name>]]"
+	else
+	  echo "$func: sytax error for $1, use <pool_id>/<image_name>[@[<snap_name>]]"
+	fi  
+	echo "$func: run mode <list> to get a list of recognized rbd-objects"
 	exit
       fi
       ;;
@@ -404,24 +407,29 @@ function parse_mode_args () {
       image_name=
       snap_name=@
       image_dir=
-      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]];then
+      if [[ $1 =~  ^([^@/]+)/([^@/]+)$ ]]; then
 	  pool_id="${BASH_REMATCH[1]}"
 	  image_name="${BASH_REMATCH[2]}"
-      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]];then
+      elif [[ $1 =~  ^([^@/]+)/([^@/]+)@([^@/]*)$ ]]; then
 	  pool_id="${BASH_REMATCH[1]}"
 	  image_name="${BASH_REMATCH[2]}"
 	  snap_name="${BASH_REMATCH[3]}"
-	  if [ "$snap_name"x = ""x ];then
+	  if [ "$snap_name"x = ""x ]; then
               snap_name=@@
 	  fi
       else
-	echo "format: $2 is invalid, use <pool_id>/<image_name>[@[<snap_name>]]"
+	if [ -z $1 ]; then 
+	  echo "$func: given rbd-object is missing, use <pool_id>/<image_name>[@[<snap_name>]]"
+	else
+	  echo "$func: sytax error for $1, use <pool_id>/<image_name>[@[<snap_name>]]"
+	fi  
+	echo "$func: run mode <list> to get a list of recognized rbd-objects"
 	exit
       fi
       if [ $# = 2 ];then
-          image_dfir=`get_path $3`
-	  if [ "image_dir"x = ""x ];then
-              echo "$func: $2 invalid"
+          image_dir=`get_path $2`
+	  if [ "image_dir"x = ""x ]; then
+              echo "$func: the given restore-path $2 is invalid!"
               exit
 	  fi
       fi
@@ -430,6 +438,7 @@ function parse_mode_args () {
 }
 
 function parse_params () {
+  local func="parse_params"
   ###
   # Evaluate given call parameters
   ###
@@ -486,7 +495,7 @@ function parse_params () {
 	    exit 1
 	else
           shift
-	  parse_mode_args $1
+	  parse_mode_args "$1"
 	fi
         ;;
       -v | --verbose)
@@ -604,8 +613,6 @@ file1=$my_dir/common_h
 file2=$my_dir/metadata_h
 file3=$my_dir/epoch_h
 file4=$my_dir/osd_job
-
-#admin_cmd $*
 
 parse_params $@
 
