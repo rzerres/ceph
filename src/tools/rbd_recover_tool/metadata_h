@@ -26,9 +26,7 @@
 my_dir=$(dirname "$0")
 
 . $my_dir/epoch_h
-
-# is included from epoch_h
-#. $my_dir/common_h
+. $my_dir/common_h
 
 # put origin name in $image_name_in: for output
 # put convert "_" name in $image_name: for grep image hobjects from database

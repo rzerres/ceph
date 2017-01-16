@@ -25,9 +25,10 @@
 
 my_dir=$(dirname "$0")
 
-. $my_dir/common_h
 . $my_dir/metadata_h
-. $my_dir/epoch_h
+# this includes
+#. $my_dir/common_h
+#. $my_dir/epoch_h
 
 db_image_prefix=
 db_image_size=
@@ -1170,34 +1171,34 @@ function recover_image()
   echo "$func ..."
   
   if [ $# -lt 3 ]; then
-      echo "$func: paramters: <pool_id> <image_name> <snap_name> [<backup_dir>]"
+      echo "$func: paramters: <pool_id> <image_name> <snap_name> [<dest_path>]"
       exit
   fi
 
   local pool_id=$1
   local img_name=$2
   local snap_name=$3
-  local backup_dir=$4
+  local dest_path=$4
   pool_id=$(($pool_id))
   if [ "$snap_name"x = "@"x ]; then
       snap_name=
   fi
-  if [ "$backup_dir"x = ""x ]; then
-      backup_dir=$default_backup_dir
+  if [ "$dest_path"x = ""x ]; then
+      dest_path=$default_dest_path
   fi
 
   #recover image with nosnap
   if [ "$snap_name"x = ""x ]; then
       discover_image_nosnap $pool_id $img_name #input image_name 
       local image_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in
-      copy_image_nosnap_single_thread $pool_id $image_hobjects $backup_dir
+      copy_image_nosnap_single_thread $pool_id $image_hobjects $dest_path
 
       #recover image with snap
   else
 
     # check if recovered head already
     local img_hobjects_path=$images/pool_$pool_id/$img_name/$img_name
-    local img_file_path=$backup_dir/pool_$pool_id/$img_name/$img_name
+    local img_file_path=$dest_path/pool_$pool_id/$img_name/$img_name
     if [ ! -e $img_hobjects_path ] || [ ! -e $img_file_path ]; then
 	echo "$func: $img_name@$snap_name : can not rollback to snapshot, please recover image head first"
 	exit
@@ -1205,12 +1206,12 @@ function recover_image()
 
     # rollback to head
     if [ "$snap_name"x = "@@"x ]; then
-	local head_dir=$backup_dir/pool_$pool_id/$img_name/@head
+	local head_dir=$dest_path/pool_$pool_id/$img_name/@head
 	if [ -e $head_dir ]; then
 	    local unit=`pushd $head_dir >/dev/null; ls|head -n 1|xargs -n 1 stat|awk '/Size:/{print $2}'`
             # rollback to head
-            rollback_image_snap $pool_id $img_name -2 $backup_dir/$img_name/@head $backup_dir $unit
-            echo "$image_name_in head : $backup_dir/$img_name/$img_name"
+            rollback_image_snap $pool_id $img_name -2 $dest_path/$img_name/@head $dest_path $unit
+            echo "$image_name_in head : $dest_path/$img_name/$img_name"
 	else
 	  echo "$func: no need to rollback to head"
 	fi
@@ -1221,11 +1222,11 @@ function recover_image()
     discover_image_snap $pool_id $img_name $snap_name # get image meta & get snapid object
     local snap_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in@$db_snap_id
     local head_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in@$db_snap_id@head
-    local snap_object_dir=$backup_dir/pool_$pool_id/$image_name_in/@$db_snap_id
-    local image_path=$backup_dir/pool_$pool_id/$image_name_in/$image_name_in
+    local snap_object_dir=$dest_path/pool_$pool_id/$image_name_in/@$db_snap_id
+    local image_path=$dest_path/pool_$pool_id/$image_name_in/$image_name_in
     local image_unit=$((1<<$db_order))
-    copy_image_snap_single_thread $pool_id $image_name_in $db_snap_id $snap_hobjects $head_hobjects $backup_dir
-    rollback_image_snap $pool_id $image_name_in $db_snap_id $snap_object_dir $backup_dir $image_unit 
+    copy_image_snap_single_thread $pool_id $image_name_in $db_snap_id $snap_hobjects $head_hobjects $dest_path
+    rollback_image_snap $pool_id $image_name_in $db_snap_id $snap_object_dir $dest_path $image_unit 
     echo "$image_name_in@$snap_name : $image_path"
   fi
 }
