@@ -73,6 +73,8 @@ function get_pg_epoch()
 
   ###
   #  how to elaborate the target ceph releases?
+  #  is it sufficient to just check wether _HOBJTOSEQ_ is available
+  #  to ignore get_pg_epoch_firefly?
   ###
   get_pg_epoch_firefly "$1"
   if [ "$pg_epoch"x != ""x ]; then
