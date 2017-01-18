@@ -65,7 +65,7 @@ function gen_database()
       echo "[$host]: get reference-objects from osd.$whoami ..."
       ssh $ssh_option $host $cmd2 > $database/$host 2>/dev/null
     } &
-  done < $osd_host_path
+  done < $osd_host_data
   wait
   echo "$func: finish"
 }
@@ -329,9 +329,12 @@ function lookup_image()
 	local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
 	local tcoll=/tmp/tmp_image_head_coll.$$$$
 	if [ $verbose ]; then
-	    echo "$func: rbd-object-v2 -> image header search-pattern='$pattern'"
+	    echo "$func: rbd-object-v2 -> image header grep search-pattern='$pattern'"
 	fi
 	# we need the grep to include the filename = node for any match
+	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> grep --with-filename -E $pattern * >$tcoll"
+	fi
 	grep --with-filename -E $pattern * >$tcoll
 	popd >/dev/null
 
@@ -405,6 +408,7 @@ function lookup_image()
 	fi
 	local entry=`choose_epoch $t_item` #t_host_remote
 	if [ $debug ]; then
+	    echo "$func: rbd-object-v2 -> entry: <osd-host pgid pg_epoch data-path>"
 	    echo "$func: rbd-object-v2 -> entry: <$entry>"
 	fi
 	rm -f $t_item

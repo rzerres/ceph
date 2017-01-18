@@ -155,7 +155,6 @@ function init_env_admin()
     # if there are several hostnames for the same node
     # we just need the output of `hostname`
     local hostname_alias=
-
     if [ "$node"  != "$lastnode" ]; then
       if [ $debug ]; then
 	  echo "$func: osd-node $node -> verify hostname, set hostname_alias"

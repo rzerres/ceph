@@ -319,27 +319,27 @@ function get_image_metadata_v2()
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit;
   fi
+  # aline to 16 digets
   local meta_header_seq=`printf "%016d" $1`
   if [ $debug ]; then
       echo "$func: meta_header_seq = $meta_header_seq"
   fi
   local ghobject_key="_USER_"$meta_header_seq"_USER_"
-  local prefix=$ghobject_key
   if [ $debug ]; then
       echo "$func: ghobject_key = $ghobject_key"
   fi
 
-  object_prefix=$(get_header_kv $prefix object_prefix string 4 20)
-  order=$(get_header_kv $prefix order int 0 1)
-  image_size=$(get_header_kv $prefix size int 4) 
-  snap_seq=$(get_header_kv $prefix snap_seq int)
+  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 20)
+  order=$(get_header_kv $ghobject_key order int 0 1)
+  image_size=$(get_header_kv $ghobject_key size int 4)
+  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 )
   
   echo -e "object_prefix:\t$object_prefix"
   echo -e "order (2^x):\t$order"
   echo -e "object-size:\t$((2**$order/1024)) KBytes"
   echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
   echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-  #echo -e "snap_seq:\t$snap_seq"
+  echo -e "snap_seq:\t$snap_seq"
 
   # list features
   list_features_v2 $1
@@ -426,7 +426,7 @@ function list_features_v2()
   local features_active=0
 
   declare -a rbd_feature_value
-  eval "rbd_feature_value=( $(for ((i=0; i<=$features_max; i++)) do echo 0; done) )"
+  eval "rbd_feature_value=( $(for ((i=0; i<$features_max; i++)) do echo 0; done) )"
 
   if [ $debug ]; then
       echo "$func: get_header_kv $prefix features init 0 1)"
@@ -463,15 +463,17 @@ function list_features_v2()
   # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.cc#L679
   # uint64_t stripe_unit;
   # uint8_t stripe_unit;
-  stripe_unit=
-  stripe_unit=$(get_header_kv $prefix stripe_unit int 0 5)
-  stripe_count=$(get_header_kv $prefix stripe_count int 0 1)
-  #stripe_size=$(get_header_kv $prefix size int 4) 
-  
-  if [ ${rbd_feature_value[2]} = 1 ]; then
+  stripe_unit=1
+  if [ $debug ]; then
+    echo -e "rbd_feature_value:\t(${rbd_feature_name[1]} -> ${rbd_feature_value[1]})"
+  fi
+  if [ ${rbd_feature_value[1]} = 1 ]; then
+      stripe_unit=$(get_header_kv $prefix stripe_unit int 0 5)
+      stripe_count=$(get_header_kv $prefix stripe_count int 0 1)
       echo -e "stripe_unit:\t$stripe_unit"
       echo -e "stripe_count:\t$stripe_count"
-      #echo -e "stripe_size:\t$stripe_size"
+  #else
+  #    echo -e "stripe_unit:\t$stripe_unit (default)"
   fi
 }
 
