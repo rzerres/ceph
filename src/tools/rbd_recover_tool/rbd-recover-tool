@@ -91,6 +91,9 @@ function cleanup_env_admin()
   if [ -e $osd_host_mapping ]; then
     rm -f $osd_host_mapping
   fi
+  if [ -e $osd_host_data ]; then
+    rm -f $osd_host_data
+  fi
 }
 
 # admin node process file: osd_host_path
@@ -135,9 +138,6 @@ function init_env_admin()
   while read line
   do
     lineno=$(($lineno + 1))
-    if [ "$line"x = ""x ]; then
-      continue;
-    fi
     local node=`echo $line|awk '{print $1}'`
     if [ "$node"x = ""x ]; then
       echo "$func: osd_host_path : line $lineno: missing parameter <hostname>"
@@ -171,8 +171,7 @@ function init_env_admin()
       check_ceph_env $node $data_path
       lastnode=$node
     fi
-  done < $osd_host_path
-
+  done < $osd_host_data
   if [ $lines = 0 ]; then
     echo "$func: invalid client setup"
     echo "\tplease create valid configuration lines: <osd-node> <osd_data_path>"
@@ -232,7 +231,7 @@ function init_env_nodes()
 	    scp $ssh_option $file1 $file2 $file3 $file4 $host:$job_path >/dev/null &
 	wait
     fi
-  done 5< $osd_host_path
+  done 5< $osd_host_data
   echo "$func: finished"
 }
 
@@ -265,7 +264,7 @@ function scatter_node_jobs()
       #	echo "[$host]: ssh $ssh_option $host:$cmd"
       #fi
     } &
-  done < $osd_host_path
+  done < $osd_host_data
   wait
   echo "$func: finish"
 }
@@ -296,7 +295,7 @@ function gather_node_infos()
       cmd3="bash $job_path/osd_job cat_image_v2 $data_path"
       ssh $ssh_option $host $cmd3 >> $image_coll_v2
     } &
-  done < $osd_host_path
+  done < $osd_host_data
   wait
   echo "$func: finish"
 }
