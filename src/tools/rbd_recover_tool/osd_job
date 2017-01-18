@@ -102,7 +102,6 @@ function do_omap_list()
   fi
   local whoami=`cat $whoami_path`
   echo "[$host]: $func for osd.$whoami ..."
-
   get_omap_list
 }
 
@@ -138,7 +137,6 @@ function do_pg_epoch()
   if [ $debug ]; then
       echo "[$host]: $func: node_pg_epoch -> node, pgid pg_epoch data_path"
   fi
-
 }
 
 function do_image_id()

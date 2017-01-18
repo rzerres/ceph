@@ -332,7 +332,7 @@ function get_image_metadata_v2()
   object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 20)
   order=$(get_header_kv $ghobject_key order int 0 1)
   image_size=$(get_header_kv $ghobject_key size int 4)
-  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 )
+  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
   
   echo -e "object_prefix:\t$object_prefix"
   echo -e "order (2^x):\t$order"
@@ -342,7 +342,7 @@ function get_image_metadata_v2()
   echo -e "snap_seq:\t$snap_seq"
 
   # list features
-  list_features_v2 $1
+  list_features_v2 $ghobject_key
   
   # ??? TODO: how about parent / overlap / protection?
   # // information about our parent image, if any
@@ -361,7 +361,7 @@ function get_image_metadata_v2()
   # list_parent_v2 $1
 
   # list snapshot
-  list_snapshots_v2 $1 $2
+  list_snapshots_v2 $ghobject_key $2
 }
 
 function list_features_v2()
@@ -371,6 +371,8 @@ function list_features_v2()
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
   fi
+  local ghobject_key=$1
+
   # Source definitions: /src/include/rbd/features.h
   #define RBD_FEATURE_LAYERING             (1ULL<<0)
   #define RBD_FEATURE_STRIPINGV2           (1ULL<<1)
@@ -429,9 +431,9 @@ function list_features_v2()
   eval "rbd_feature_value=( $(for ((i=0; i<$features_max; i++)) do echo 0; done) )"
 
   if [ $debug ]; then
-      echo "$func: get_header_kv $prefix features init 0 1)"
+      echo "$func: get_header_kv $ghobject_key features init 0 1)"
   fi
-  local feature_mask=$(get_header_kv $prefix features int 0 1)
+  local feature_mask=$(get_header_kv $ghobject_key features int 0 1)
   echo -e "feature-mask:\t$feature_mask"
   
   # evaluate if rbd_feature_names is active
@@ -512,6 +514,7 @@ function list_snapshots_v2()
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
   fi
+  local ghobject_key=$1
   local sname=
   if [ $# -eq 2 ]; then
       sname=$2

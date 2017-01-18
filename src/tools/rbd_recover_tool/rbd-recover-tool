@@ -162,6 +162,7 @@ function init_env_admin()
       hostname_alias=`ssh $ssh_option $node "hostname" 2>/dev/null </dev/null`
       if [ "$hostname_alias"x = ""x ]; then
         echo "$func: osd_host_path: line $lineno: $node: failed to get alias for remote hostname"
+	echo "$func: osd_host_path: your osd-node can't be reached via ssh ... terminating"
 	rm -rf $osd_host $osd_host_mapping
 	exit
       fi
