@@ -526,62 +526,23 @@ function list_snapshots_v2()
   local prefix="_USER_"$meta_header_seq"_USER_"
 
   # debug from here on!
-  return
-  local keys=(`awk -F ":" '/snapshot_/ && $1 == "'"$prefix"'" {if ($2 == "") exit; split($2, arr, "_"); 
+  local values=(`awk -F ":" '/snapshot_/ && $1 == "'"$ghobject_key"'" {if ($2 == "") exit; split($2, arr, "_"); 
 	print arr[2];}' $omap_list|sort -r`)
   local tmp_snap=/tmp/tmp_snap.$$$$
 
-  echo -e "\t\tID\tNAME\t\tSIZE"
-  for key in ${keys[@]}
+  echo -e "snapshots\tID\tNAME\t\tSIZE"
+  for value in ${values[@]}
   do
-    key="snapshot_$key"
-    ceph-kvstore-tool $omap_path get $prefix $key out $tmp_snap 2>/dev/null >/dev/null
-    local arr=`cat $tmp_snap |awk -F ":" '{print $2}'`
-    #local arr=(`ceph-kvstore-tool $omap_path get $prefix $key|awk -F ":" '{print $2}'`);
-    if [ $debug ]; then
-	echo "$func: tmp_snap="
-	cat $tmp_snap	
-	echo "array: $arr"
-    fi
+    svalue="snapshot_$value"
+    snap_id=$(get_header_kv $ghobject_key $svalue int 6 1)
+    snap_len=$(get_header_kv $ghobject_key $svalue int 14 1)
+    snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_len)
+    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_len)) 8)
 
-    ###
-    # wip: refactor from here on!
-    ###
-    
-    # get snap_name
-    tmp=
-    for ((i=17; i>13; i--))
-    do
-      tmp="$tmp${arr[$i]}"
-    done
-    local len=$((16#$tmp))
-    local snap_name=
-    for ((i=18; i<$((18+$len)); i++))
-    do
-      # convert ascii to char
-      local char=`echo -e "\x${arr[$i]}"` 
-      snap_name="$snap_name$char"
-    done
-    # get snap_id (little endian)
-    local tmp=
-    for ((i=13; i>5; i--))
-    do
-      tmp="$tmp${arr[$i]}" 
-    done
-    local snap_id=$((16#$tmp))
-    # get image_size of current snap (little endian)
-    tmp=
-    for ((i=$((25+$len)); i>$((17+$len)); i--))
-    do
-      tmp="$tmp${arr[$i]}"
-    done
-    local image_size=$((16#$tmp))
-    if [ "$sname"x = ""x ]; then
-	echo -e "snapshot:\t$snap_id\t$snap_name\t\t$image_size" 
-	continue
-    fi
+    snap_size_gb="$((snap_size/1024/1024)) GBytes)"
+    echo -e "\t\t$snap_id\t$snap_name\t\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
     if [ "$sname"x = "$snap_name"x ]; then
-	echo -e "snapshot:\t$snap_id\t$snap_name\t\t$image_size" 
+	echo selected
 	return
     fi
   done
