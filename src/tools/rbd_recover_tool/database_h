@@ -63,7 +63,7 @@ function gen_database()
       whoami=`ssh $ssh_option $host $cmd1`
       local cmd2="find $data_path/current -type f"
       echo "[$host]: get reference-objects from osd.$whoami ..."
-      ssh $ssh_option $host $cmd2 > $database/$host 2>/dev/null
+      ssh $ssh_option $host $cmd2 >> $database/$host 2>/dev/null
     } &
   done < $osd_host_data
   wait
@@ -100,7 +100,6 @@ function gather_hobject_common()
   fi
   local underline_image_prefix=`convert_underline $image_prefix`
   local dump_image_prefix=`dump_backslash $underline_image_prefix`
-  local ddump_image_prefix=`dump_dump_backslash $underline_image_prefix`
   local images_raw_dir=$rbd_image/raw
   local image_hobjects_dir=$images/pool_$pool_id/$image_prefix
   # $images/raw/$image_prefix"_head"
@@ -119,7 +118,7 @@ function gather_hobject_common()
   pushd $database >/dev/null
   local  pattern="\.[0-9a-f]+__"$hex_snap_id"_[0-9A-F]{8}__"$hex_pool_id
   >$image_hobjects_raw
-  grep -r -E $dump_image_prefix""$pattern * >$image_hobjects_raw
+  grep --recursive --extended-regexp "$dump_image_prefix $pattern" * >$image_hobjects_raw
   if [ ! -s $image_hobjects_raw ]; then
       echo "$func: image snap [ $image_prefix"$psuffix" ] is empty"
       return 1 #no data available
@@ -213,12 +212,12 @@ function lookup_image()
   local func="lookup_image"
   if [ $# -lt 2 ]; then
       echo "$func: syntax error"
-      echo "\tplease provide parameter <pool_id> <image_name> [<snap_name>]"
+      #echo "\tplease provide parameter <pool_id> <image_name> [<snap_name>]"
       exit 1;
   fi
-  local pool_id=$1
-  local image_name=$2
-  local snap_name=$3
+  local pool_id="$1"
+  local image_name="$2"
+  local snap_name="$3"
   pool_id=$((pool_id))
   echo -e "$func: pool_id='$pool_id'; image_name='$image_name; snap_name='$snap_name'"
   if [ $pool_id -lt 0 ]; then
@@ -1180,7 +1179,7 @@ function recover_image()
   fi
 
   local pool_id=$1
-  local img_name=$2
+  local image_name=$2
   local snap_name=$3
   local dest_path=$4
   pool_id=$(($pool_id))
@@ -1193,7 +1192,7 @@ function recover_image()
 
   #recover image with nosnap
   if [ "$snap_name"x = ""x ]; then
-      discover_image_nosnap $pool_id $img_name #input image_name 
+      discover_image_nosnap $pool_id $image_name #input image_name 
       local image_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in
       copy_image_nosnap_single_thread $pool_id $image_hobjects $dest_path
 
@@ -1201,21 +1200,21 @@ function recover_image()
   else
 
     # check if recovered head already
-    local img_hobjects_path=$images/pool_$pool_id/$img_name/$img_name
-    local img_file_path=$dest_path/pool_$pool_id/$img_name/$img_name
+    local img_hobjects_path=$images/pool_$pool_id/$image_name/$image_name
+    local img_file_path=$dest_path/pool_$pool_id/$image_name/$image_name
     if [ ! -e $img_hobjects_path ] || [ ! -e $img_file_path ]; then
-	echo "$func: $img_name@$snap_name : can not rollback to snapshot, please recover image head first"
+	echo "$func: $image_name@$snap_name : can not rollback to snapshot, please recover image head first"
 	exit
     fi
 
     # rollback to head
     if [ "$snap_name"x = "@@"x ]; then
-	local head_dir=$dest_path/pool_$pool_id/$img_name/@head
+	local head_dir=$dest_path/pool_$pool_id/$image_name/@head
 	if [ -e $head_dir ]; then
 	    local unit=`pushd $head_dir >/dev/null; ls|head -n 1|xargs -n 1 stat|awk '/Size:/{print $2}'`
             # rollback to head
-            rollback_image_snap $pool_id $img_name -2 $dest_path/$img_name/@head $dest_path $unit
-            echo "$image_name_in head : $dest_path/$img_name/$img_name"
+            rollback_image_snap $pool_id $image_name -2 $dest_path/$image_name/@head $dest_path $unit
+            echo "$image_name_in head : $dest_path/$image_name/$image_name"
 	else
 	  echo "$func: no need to rollback to head"
 	fi
@@ -1223,7 +1222,7 @@ function recover_image()
     fi
     
     # rollback to snap
-    discover_image_snap $pool_id $img_name $snap_name # get image meta & get snapid object
+    discover_image_snap $pool_id $image_name $snap_name # get image meta & get snapid object
     local snap_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in@$db_snap_id
     local head_hobjects=$images/pool_$pool_id/$image_name_in/$image_name_in@$db_snap_id@head
     local snap_object_dir=$dest_path/pool_$pool_id/$image_name_in/@$db_snap_id

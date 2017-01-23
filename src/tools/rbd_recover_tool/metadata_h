@@ -522,30 +522,31 @@ function list_snapshots_v2()
   if [ $debug ]; then
       echo "$func: snapshot-name='$sname'"
   fi
-  local meta_header_seq=`printf "%016d" $1`
-  local prefix="_USER_"$meta_header_seq"_USER_"
 
-  # debug from here on!
   local values=(`awk -F ":" '/snapshot_/ && $1 == "'"$ghobject_key"'" {if ($2 == "") exit; split($2, arr, "_"); 
 	print arr[2];}' $omap_list|sort -r`)
-  local tmp_snap=/tmp/tmp_snap.$$$$
 
-  echo -e "snapshots\tID\tNAME\t\tSIZE"
-  for value in ${values[@]}
-  do
-    svalue="snapshot_$value"
-    snap_id=$(get_header_kv $ghobject_key $svalue int 6 1)
-    snap_len=$(get_header_kv $ghobject_key $svalue int 14 1)
-    snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_len)
-    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_len)) 8)
-
-    snap_size_gb="$((snap_size/1024/1024)) GBytes)"
-    echo -e "\t\t$snap_id\t$snap_name\t\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
-    if [ "$sname"x = "$snap_name"x ]; then
-	echo selected
-	return
-    fi
-  done
+  if [ ${#values[*]} -gt 0 ]; then
+      if [ $debug ]; then
+	  echo "$func: array snapshot-values: size=${#values[*]} elemntes='$values[@]'"
+      fi
+      echo -e "snapshots\tID\tNAME\t\tSIZE"
+      for value in ${values[@]}
+      do
+	svalue="snapshot_$value"
+	snap_id=$(get_header_kv $ghobject_key $svalue int 6 1)
+	snap_len=$(get_header_kv $ghobject_key $svalue int 14 1)
+	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_len)
+	snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_len)) 8)
+	
+	snap_size_gb="$((snap_size/1024/1024)) GBytes)"
+	echo -e "\t\t$snap_id\t$snap_name\t\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	if [ "$sname"x = "$snap_name"x ]; then
+	    echo selected
+	    return
+	fi
+      done
+  fi
 }
 
 #======================================== end image format v2 ========================================  

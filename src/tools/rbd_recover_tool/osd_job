@@ -229,7 +229,7 @@ function flush_osd_journal()
   #ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null  2>/dev/null
   ceph-osd -i $whoami --osd-data $osd_data_path --osd-journal $osd_journal_path --flush-journal >/dev/null
   if [ $? -ne 0 ]; then
-      echo "[$host]: $func: flush osd journal failed"
+      echo "[$host]: $func: osd-$whoami -> flush osd journal failed"
       exit
   fi
 }

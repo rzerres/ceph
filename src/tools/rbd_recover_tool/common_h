@@ -185,9 +185,9 @@ function osd_host_path_sort()
 # for osd node
 function get_omap_list()
 {
-    #if [ $debug ]; then
-    #echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list"
-    #fi	
+    if [ $debug ]; then
+	echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list"
+    fi	
     ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list 2>/dev/null
 }
 
