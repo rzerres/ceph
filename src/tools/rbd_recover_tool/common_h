@@ -188,7 +188,7 @@ function get_omap_list()
     if [ $debug ]; then
 	echo "get_omap_list: ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list"
     fi	
-    ceph-kvstore-tool $kvdb_type $omap_path list > $omap_list 2>/dev/null
+    ceph-kvstore-tool $kvdb_type $omap_path list >$omap_list 2>/dev/null
 }
 
 

@@ -212,10 +212,16 @@ function get_image_metadata_v1()
 #  *   rbd_object_map.<id>     - optional image object map
 #  *   rbd_data.<id>.00000000
 #  *   rbd_data.<id>.00000001
-#  *   ...                     - data
+#  *   ...                     - data objects
 #  */
 
-# key/value: ceph-kvstore-tool kvdb-type /storepath get _USER_0000000000017426_USER_ (object_prefix|order|size|snap_seq)
+# /* Metadata is stored in the object-map and decrypted with ceph-kvstore-tool tool
+#  * rbd_header.<id>...head.<pool>.<seq> object extracted via get_map_header/get_meta_header_seq
+#  * key/value: ceph-kvstore-tool kvdb-type /storepath/to/omap list _USER_<16digits>_USER_
+#  *            generic attributes: object_prefix;order;size;features;parent;snap_seq
+#  *            feature-specific:   stripe_unit;stripe_count;snapshot
+#  *
+#  */
 
 # decode image id from image_id_hobject 
 function get_image_id()
@@ -285,7 +291,7 @@ function get_meta_header_seq()
 
 function get_image_metadata_v2()
 {
-  # ~ceph/ceph/tree/master/src/include/rbd/librbd.h
+  # https://github.com/ceph/ceph/tree/master/src/include/rbd/librbd.h#L89
   # typedef struct {
   # uint64_t size;
   # uint64_t obj_size;
@@ -329,23 +335,27 @@ function get_image_metadata_v2()
       echo "$func: ghobject_key = $ghobject_key"
   fi
 
-  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 20)
+  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 21)
   order=$(get_header_kv $ghobject_key order int 0 1)
-  image_size=$(get_header_kv $ghobject_key size int 4)
+  image_size=$(get_header_kv $ghobject_key size int 4 4)
   snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
-  
   echo -e "object_prefix:\t$object_prefix"
   echo -e "order (2^x):\t$order"
   echo -e "object-size:\t$((2**$order/1024)) KBytes"
   echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
   echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-  echo -e "snap_seq:\t$snap_seq"
 
-  # list features
-  list_features_v2 $ghobject_key
+  # parse features
+  feature_mask=$(get_header_kv $ghobject_key features int 0 1)
+  echo -e "feature_mask:\t$feature_mask"
+  parse_feature_mask $feature_mask
   
+  # list snapshot
+  list_snapshots_v2 $ghobject_key $2
+  #echo -e "snap_seq:\t$snap_seq"
+
   # ??? TODO: how about parent / overlap / protection?
-  # // information about our parent image, if any
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L12
   # struct cls_rbd_parent {
   #   int64_t pool;        ///< parent pool id
   #   string id;           ///< parent image id
@@ -356,23 +366,28 @@ function get_image_metadata_v2()
   #   bool exists() const {
   #     return snapid != CEPH_NOSNAP && pool >= 0 && id.length() > 0 && overlap > 0;
   #   }
-    
-  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L113
   # list_parent_v2 $1
-
-  # list snapshot
-  list_snapshots_v2 $ghobject_key $2
+  parent=$(get_header_kv $ghobject_key parent string 18 14)
+  if [ "$parent"x != x ]; then
+      echo -e "parent:\t$parent"
+  fi
 }
 
-function list_features_v2()
+function parse_feature_mask()
 {
-  local func="list_features_v2"
-  if [ "$1"x = ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
+  local func="parse_feature_mask"
+  local feature_mask=$1
+  if [ "$feature_mask"x = ""x ]; then
+      echo "$func: missing parameter <feature_mask>"
       exit
   fi
-  local ghobject_key=$1
-
+  if [ $verbose ]; then
+      echo "$func: parse feature-mask ..."
+  fi
+  if [ $debug ]; then
+      echo -e "$func: feature-mask -> $feature_mask"
+  fi
+  
   # Source definitions: /src/include/rbd/features.h
   #define RBD_FEATURE_LAYERING             (1ULL<<0)
   #define RBD_FEATURE_STRIPINGV2           (1ULL<<1)
@@ -395,10 +410,6 @@ function list_features_v2()
   # sum   255     all features set
   # sum   125     layering,exclusive-lock,object-map,fast-diff,deep-flatten,journaling
   # sum    61     layering,exclusive-lock,object-map,fast-diff,deep-flatten
-
-  if [ $verbose ]; then
-      echo "$func: get feature-mask ..."
-  fi
 
   local rbd_feature_name_layering="layering"
   local rbd_feature_name_striping="striping"
@@ -430,13 +441,7 @@ function list_features_v2()
   declare -a rbd_feature_value
   eval "rbd_feature_value=( $(for ((i=0; i<$features_max; i++)) do echo 0; done) )"
 
-  if [ $debug ]; then
-      echo "$func: get_header_kv $ghobject_key features init 0 1)"
-  fi
-  local feature_mask=$(get_header_kv $ghobject_key features int 0 1)
-  echo -e "feature-mask:\t$feature_mask"
-  
-  # evaluate if rbd_feature_names is active
+  # evaluate if rbd_feature_name is active
   for ((i=$features_max; i>=0; i--)); do
     value=$((2**$i))
     if [ $feature_mask -ge $value ]; then
@@ -467,7 +472,7 @@ function list_features_v2()
   # uint8_t stripe_unit;
   stripe_unit=1
   if [ $debug ]; then
-    echo -e "rbd_feature_value:\t(${rbd_feature_name[1]} -> ${rbd_feature_value[1]})"
+    echo -e "$func: ${rbd_feature_name[1]} -> ${rbd_feature_value[1]}"
   fi
   if [ ${rbd_feature_value[1]} = 1 ]; then
       stripe_unit=$(get_header_kv $prefix stripe_unit int 0 5)
@@ -481,32 +486,43 @@ function list_features_v2()
 
 function list_snapshots_v2()
 {
-  # ~ceph/ceph/tree/master/src/include/rbd/librbd.h
+  # https://github.com/ceph/ceph/tree/master/src/include/rbd/librbd.h#L67
   # typedef struct {
   #   uint64_t id;
   #   uint64_t size;
   #   const char *name;
   # } rbd_snap_info_t;
 
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L60
   # struct cls_rbd_snap {
-  # 	snapid_t id;
-  #	string   name;
-  #	uint64_t image_size;
-  #	uint64_t features;
-  #	uint8_t  protection_status;
-  #	cls_rbd_parent parent;
+  #   snapid_t id;
+  #   string name;
+  #   uint64_t image_size;
+  #   uint64_t features;
+  #   uint8_t protection_status;
+  #   cls_rbd_parent parent;
+  #   uint64_t flags;
+  #   cls::rbd::SnapshotNamespaceOnDisk snapshot_namespace;
+  #
+  #   /// true if we have a parent
+  #   bool has_parent() const {
+  #     return parent.exists();
   # }
 
+
   # Decode the binary representation:
-  # decode cls_rbd_snap
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L91
+  # DECODE _START(5,p) -> we decode at 6
+  # bl  type    name
   # 1	u8	struct_v
   # 1	u8	struct_compat
   # 4	u32	struct_len
-  # 8	u64	snapid_t id //s=6 n=8
-  # 4	u32	len of name //s=14 n=4
-  # len	char	name        //s=18 n=len
-  # 8	u64	image_size
-  # 8	u64	features
+  # 8	u64	snapid_t id //s=6 n=4
+  # 4	u32	name_len    //s=14 n=4
+  # xx	char	name        //s=18 n=name_len
+  # 8	u64	image_size  //s=18+len n=len
+  # 8	u64	features    //s=18+len+8 n=4
+  # 8   u8      protection_status  //s=18+len+16 n=1
   # ......
 
   local func="list_snapshots_v2"
@@ -528,24 +544,69 @@ function list_snapshots_v2()
 
   if [ ${#values[*]} -gt 0 ]; then
       if [ $debug ]; then
-	  echo "$func: array snapshot-values: size=${#values[*]} elemntes='$values[@]'"
+	  echo "$func: array snapshot-values: size=${#values[*]} elements='${values[@]}'"
       fi
-      echo -e "snapshots\tID\tNAME\t\tSIZE"
+      #echo -e "snapshots\tID\tNAME\t\tSIZE"
       for value in ${values[@]}
       do
 	svalue="snapshot_$value"
-	snap_id=$(get_header_kv $ghobject_key $svalue int 6 1)
-	snap_len=$(get_header_kv $ghobject_key $svalue int 14 1)
-	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_len)
-	snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_len)) 8)
-	
-	snap_size_gb="$((snap_size/1024/1024)) GBytes)"
-	echo -e "\t\t$snap_id\t$snap_name\t\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
-	if [ "$sname"x = "$snap_name"x ]; then
-	    echo selected
-	    return
+	snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_name_len)
+	if [ $debug ]; then
+	    echo -e "snapshot-count:\t${#values[*]}"
 	fi
+	case "$sname"x in
+	  x) # list all available snapshots
+	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
+	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
+	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
+	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_id:\t$snap_id"
+	    echo -e "snap_name_len:\t$snap_name_len"
+	    echo -e "snap_name:\t$snap_name"
+	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	    #echo -e "snap_order (2^x):\t$order"
+	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
+	    echo -e "snap_features:\t$snap_features"
+	    echo -e "protect:\t$snap_protection_status"
+	    parse_feature_mask $snap_features
+	  ;;
+	  "$snap_name"x) # just print out info for matching snapshot
+	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
+	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
+	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
+	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 8)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_id:\t$snap_id"
+	    #echo -e "snap_name_len:\t$snap_name_len
+	    echo -e "snap_name:\t$snap_name (selected)"
+	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	    echo -e "snap_features:\t$snap_features"
+	    echo -e "protect:\t$snap_protection_status"
+	    parse_feature_mask $snap_features
+	    break
+	  ;;
+	esac
+
+	### WIP: Layering (COW-clone, only with format 2)
+	# - read parent id
+	# - status of the snapshot: protected?
+	# - image may have different properties (size, clones, etc.)
+	snap_parent=$(get_header_kv $ghobject_key parent string 18 14)
+	if [ ! -z $parent ]; then
+	    echo -e "snap_parent:\t$snap_parent"
+	fi
+
       done
+  else
+    if [ $debug ]; then
+	echo "$func: no snapshots found."
+    fi
   fi
 }
 

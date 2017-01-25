@@ -250,23 +250,30 @@ function scatter_node_jobs()
   while IFS=$' \t\n' read -r host data_path
   do
     {
-      #host=`echo $line|awk '{print $1}'`
-      #data_path=`echo $line|awk '{print $2}'`
+      # ensure that regular ceph processes are inactive
+      check_osd_process $host
 
-      # check_osd_process $host
-
-      # on each osd-node: tasks to be run for any data-path
+      # on each osd-node: first flush the osd journals for given osd-path
       cmd="bash $job_path/osd_job flush_osd_journal $data_path;"
-      cmd="$cmd $job_path/osd_job do_omap_list $data_path;"
-      cmd="$cmd bash $job_path/osd_job do_pg_epoch $data_path;"
-      cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"  
       ssh $ssh_option $host $cmd </dev/null      
-      #if [ $debug ]; then
-      #	echo "[$host]: ssh $ssh_option $host:$cmd"
-      #fi
     } &
   done < $osd_host_data
   wait
+  while IFS=$' \t\n' read -r host data_path
+  do
+    {
+      # on each osd-node: extract Object-maps and PlacementGroup-maps for given osd-path
+      cmd="bash $job_path/osd_job do_omap_list $data_path;"
+      cmd="$cmd bash $job_path/osd_job do_pg_epoch $data_path;"
+      cmd="$cmd bash $job_path/osd_job do_image_list $data_path;"  
+      #if [ $debug ]; then
+      #	echo "[$host]: ssh $ssh_option $host $cmd"
+      #fi
+      ssh $ssh_option $host $cmd </dev/null      
+    } &
+  done < $osd_host_data
+  wait
+  
   echo "$func: finish"
 }
 

@@ -49,6 +49,11 @@ function gen_database()
   local host=
   local data_path=
 
+  if [ ! -f $osd_host_data ]; then
+      echo "$func: osd datapath is missing!"
+      echo "$func: did you run $progname init?"
+      exit 1
+  fi
   trap 'echo $func failed; exit;' INT HUP
   while read line
   do
@@ -276,7 +281,7 @@ function lookup_image()
   {
     cat $image_coll_v2|grep -E "/rbd\\\\uid\."$img_name"__head_[0-9A-F]{8}__$hex_pool_id" >$res2
     if [ -s $res2 ]; then
-	echo "$func: rbd-object-v2"
+	# echo "$func: rbd-object-v2"
 	if [ $debug ]; then
 	    echo "$func: rbd-object-v2 -> get image_id_hobject for given image-name ..."
 	fi
@@ -297,7 +302,7 @@ function lookup_image()
             rm -f $item
 	fi
 
-	check_osd_process $node
+	#check_osd_process $node
 
 	local tid=/tmp/image_id.$$$$
 	data_path=`echo $image_id_hobject|awk -F "/current" '{print $1}'`
@@ -327,9 +332,6 @@ function lookup_image()
 	pushd $database >/dev/null
 	local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
 	local tcoll=/tmp/tmp_image_head_coll.$$$$
-	if [ $verbose ]; then
-	    echo "$func: rbd-object-v2 -> image header grep search-pattern='$pattern'"
-	fi
 	# we need the grep to include the filename = node for any match
 	if [ $debug ]; then
 	    echo "$func: rbd-object-v2 -> grep --with-filename -E $pattern * >$tcoll"
@@ -446,7 +448,9 @@ function lookup_image()
 	image_format=2
 	#data_path=`echo $image_header_hobject|awk -F "/current" '{print $1}'`
 	>$result
-	echo "$func: rbd-object-v2 -> lookup attributes"
+	if [ $verbose ]; then
+	    echo "$func: rbd-object-v2 -> lookup attributes"
+	fi
 	echo -e "image_name:\t$image_name_in"
 	echo -e "image_format:\t$image_format"
 	echo -e "image_id:\t$image_id"
@@ -484,7 +488,7 @@ function lookup_image()
   if [ "$snap_name"x != ""x ]; then
       db_snap_id=`cat $result|awk '/^snapshot:/{print $2}'`
       if [ "$db_snap_id"x = ""x ]; then
-	  echo "$func: $image_name_in@$snap_name NOT EXISTS"
+	  echo "$func: $image_name_in@$snap_name does not exist"
 	  exit
       fi
       db_snap_image_size=`cat $result|awk '/^snapshot:/{print $4}'`
@@ -498,7 +502,7 @@ function lookup_image()
     cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
   fi
   found=1
-  rm -f $result
+  #rm -f $result
 }
 
 function list_images()
