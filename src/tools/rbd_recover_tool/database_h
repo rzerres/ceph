@@ -499,7 +499,8 @@ function lookup_image()
     if [ ! -e $image_dir ]; then
 	mkdir -p $image_dir
     fi
-    cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
+    #cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
+    cat $result >$image_snaplist
   fi
 
   found=1
