@@ -204,7 +204,7 @@ function do_image_metadata_v2()
   get_map_header $image_id
   # metadata.h: get_meta_header_seq -> returns decimal value of header_seq
   get_meta_header_seq $map_header_prefix $map_header_key
-  # osd_job: get_image_metadata_v2: decrypt values for key _USER_<16d_header_seq>_USER  
+  # osd_job: get_image_metadata_v2: decrypt values for key _USER_<16d_header_seq>_USER
   get_image_metadata_v2 $meta_header_seq $snap_name
 }
 

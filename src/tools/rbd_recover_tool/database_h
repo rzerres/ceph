@@ -484,14 +484,14 @@ function lookup_image()
   fi
 
   db_image_size=`cat $result|awk '/^image_size:/{print $2}'`
-  db_order=`cat $result|awk '/^order:/{print $2}'`
+  db_order=`cat $result|awk '/^order \(2\^x\):/{print $3}'`
   if [ "$snap_name"x != ""x ]; then
-      db_snap_id=`cat $result|awk '/^snapshot:/{print $2}'`
+      db_snap_id=`cat $result|awk '/^snap_id:/{print $2}'`
       if [ "$db_snap_id"x = ""x ]; then
 	  echo "$func: $image_name_in@$snap_name does not exist"
 	  exit
       fi
-      db_snap_image_size=`cat $result|awk '/^snapshot:/{print $4}'`
+      db_snap_image_size=`cat $result|awk '/^snap_size:/{print $2}'`
   else
     #save snaplist
     local image_snaplist=$images/pool_$pool_id/$image_name_in/@snaplist
@@ -501,8 +501,13 @@ function lookup_image()
     fi
     cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
   fi
+
   found=1
-  #rm -f $result
+  if [ $debug ]; then
+      echo "$func: result string given below"
+      cat $result
+  fi
+  rm -f $result
 }
 
 function list_images()

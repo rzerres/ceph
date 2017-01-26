@@ -344,32 +344,31 @@ function get_header_kv()
   local value
   
   if [ -z $prefix ]; then
-      if [ $debug ]; then
-	  echo "$func: ceph-kvstore-tool needs a valid object prefix"
-      fi
-      exit
+    if [ $debug ]; then
+      echo "$func: ceph-kvstore-tool needs a valid object prefix"
+    fi
+    exit
   elif [ -z $key ]; then
-      if [ $debug ]; then
-	  echo "$func: ceph-kvstore-tool needs a valid key "
-      fi
-      exit
-  elif [ "$type"x != "int"x ] && [ "$type"x != "string"x ]; then
-      if [ $debug ]; then
-	  echo "$func: ceph-kvstore-tool need a valid input type (string|int)"
-      fi
-      exit
+    if [ $debug ]; then
+      echo "$func: ceph-kvstore-tool needs a valid key "
+    fi
+    exit
+  elif [ "$type"x != "int"x ] && [ "$type"x != "le_int"x ] && [ "$type"x != "string"x ]; then
+    if [ $debug ]; then
+      echo "$func: ceph-kvstore-tool need a valid input type (string|int|le_int)"
+    fi
+    exit
   fi
 
   # values are dumped in hex (big-endian format)
   #ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
   ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
   if [ $? != 0 ]; then
-      if [ $debug ]; then
-	  echo "$func: error -> ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key"
-      fi
-      exit
+    if [ $debug ]; then
+      echo "$func: error -> ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key"
+    fi
+    exit
   fi
-
 
   if [ "$type"x = "string"x ]; then
     # process dump: offset 4, switch next 24 octets
@@ -377,16 +376,19 @@ function get_header_kv()
     test -z $len && len=24;
     value=`xxd -seek $seek -len $len -p $res | xxd -r -p`
   elif [ "$type"x = "int"x ]; then
-   test -z $seek && seek=0;
-   test -z $len && len=8;
-   #hexvalue=`xxd -seek $seek -len $len -e -p $res`
-   hexvalue=`xxd -seek $seek -len $len -p $res`
-   value=`printf "%d" 0x$hexvalue`
+    test -z $seek && seek=0;
+    test -z $len && len=8;
+    hexvalue=`xxd -seek $seek -len $len -p $res`
+    value=`printf "%d" 0x$hexvalue`
+  elif [ "$type"x = "le_int"x ]; then
+    # use little endian conversion
+    hexvalue=`xxd -seek $seek -len $len -e $res | \
+       awk 'BEGIN { -F ":" } { print $2; }'`
+    value=`printf "%d" 0x$hexvalue`
   fi
   #if [ $debug ]; then
   #    echo "\n[debug] $func: key: $prefix -> value: $value>"
   #fi
   rm -f $res
   echo $value
-  #echo $__result
 }

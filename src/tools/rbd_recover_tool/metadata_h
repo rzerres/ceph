@@ -338,7 +338,6 @@ function get_image_metadata_v2()
   object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 21)
   order=$(get_header_kv $ghobject_key order int 0 1)
   image_size=$(get_header_kv $ghobject_key size int 4 4)
-  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
   echo -e "object_prefix:\t$object_prefix"
   echo -e "order (2^x):\t$order"
   echo -e "object-size:\t$((2**$order/1024)) KBytes"
@@ -352,6 +351,7 @@ function get_image_metadata_v2()
   
   # list snapshot
   list_snapshots_v2 $ghobject_key $2
+  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
   #echo -e "snap_seq:\t$snap_seq"
 
   # ??? TODO: how about parent / overlap / protection?
@@ -369,7 +369,7 @@ function get_image_metadata_v2()
   # list_parent_v2 $1
   parent=$(get_header_kv $ghobject_key parent string 18 14)
   if [ "$parent"x != x ]; then
-      echo -e "parent:\t$parent"
+      echo -e "parent_prefix:\t$parent"
   fi
 }
 
@@ -517,12 +517,12 @@ function list_snapshots_v2()
   # 1	u8	struct_v
   # 1	u8	struct_compat
   # 4	u32	struct_len
-  # 8	u64	snapid_t id //s=6 n=4
-  # 4	u32	name_len    //s=14 n=4
-  # xx	char	name        //s=18 n=name_len
-  # 8	u64	image_size  //s=18+len n=len
-  # 8	u64	features    //s=18+len+8 n=4
-  # 8   u8      protection_status  //s=18+len+16 n=1
+  # 8	u64	snapid_t id             //s=3 n=4
+  # 4	u32	name_len                //s=14 n=1
+  # xx	char	name                    //s=18 n=name_len
+  # 8	u64	image_size              //s=18+len n=1
+  # 8	u64	features                //s=18+len+8 n=1
+  # 1   u8      protection_status       //s=18+len+16 n=1
   # ......
 
   local func="list_snapshots_v2"
@@ -550,44 +550,46 @@ function list_snapshots_v2()
       for value in ${values[@]}
       do
 	svalue="snapshot_$value"
-	snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	snap_name_len=$(get_header_kv $ghobject_key $svalue int 14 1)
 	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_name_len)
 	if [ $debug ]; then
 	    echo -e "snapshot-count:\t${#values[*]}"
 	fi
 	case "$sname"x in
 	  x) # list all available snapshots
-	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
+	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 0 1)
+	    snap_struct_len=$(get_header_kv $ghobject_key $svalue int 2 1)
 	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
-	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
-	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
 	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
-	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+8)) 1)
+	    snap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
 	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_struct_l:\t$snap_struct_len"
 	    echo -e "snap_id:\t$snap_id"
 	    echo -e "snap_name_len:\t$snap_name_len"
 	    echo -e "snap_name:\t$snap_name"
 	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
 	    #echo -e "snap_order (2^x):\t$order"
 	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-	    echo -e "snap_features:\t$snap_features"
 	    echo -e "protect:\t$snap_protection_status"
+	    echo -e "snap_features:\t$snap_features"
 	    parse_feature_mask $snap_features
 	  ;;
 	  "$snap_name"x) # just print out info for matching snapshot
-	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
+	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 0 1)
+	    snap_struct_len=$(get_header_kv $ghobject_key $svalue int 2 1)
 	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
-	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
-	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
-	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 8)
-	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+8)) 1)
+	    snap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
 	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_struct_l:\t$snap_struct_len"
 	    echo -e "snap_id:\t$snap_id"
 	    #echo -e "snap_name_len:\t$snap_name_len
 	    echo -e "snap_name:\t$snap_name (selected)"
 	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
-	    echo -e "snap_features:\t$snap_features"
 	    echo -e "protect:\t$snap_protection_status"
+	    echo -e "snap_features:\t$snap_features"
 	    parse_feature_mask $snap_features
 	    break
 	  ;;
