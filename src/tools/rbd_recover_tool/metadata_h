@@ -147,7 +147,7 @@ function get_image_metadata_v1()
   fi
 
   # decode rbd_obj_header_ondisk of <image_name>.rbd
-  local image_prefix=`hexdump -e '10/1 "%c"' -s 40 -n 24 $hobject_path`
+  local block_name=`hexdump -e '10/1 "%c"' -s 40 -n 24 $hobject_path`
   local order=`hexdump -e '10/4 "%u"' -s 76 -n 1 $hobject_path`
   local image_size=`hexdump -C -s 80 -n 8 $hobject_path|head -n 1|awk '{for (i=9; i>1; i--) {printf $i}}'`
   image_size=$((16#$image_size))
@@ -158,7 +158,7 @@ function get_image_metadata_v1()
   local snap_names_len=`hexdump -C -s 104 -n 8 $hobject_path|head -n 1|
 	awk '{num=""; for(i=9; i>1; i--){ num=num""$i;} print strtonum("0x"num);}'` 
 
-  echo -e "image_prefix:\t$block_name"
+  echo -e "block_name:\t$block_name"
   echo -e "order:\t\t$order"
   echo -e "image_size:\t$image_size"
   echo -e "snap_seq:\t$snap_seq"
@@ -223,18 +223,160 @@ function get_image_metadata_v1()
 #  *
 #  */
 
-function get_image_features()
+# decode image id from image_id_hobject 
+function get_image_id()
 {
-  ###
-  # parse the given feature_mask
-  ###
-  local func="get_image_features"
-  local ghobject_key=$1
-  local feature_mask=$2
-  if [ "$ghobject_key"x = ""x ]; then
-      echo "$func: missing parameter <ghobject_key>"
+  local func="get_image_id"
+  if [ "$1"x = ""x ]; then
+      exit;
+  fi
+  local image_id_hobject=$1 #from admin node's database
+
+  if [ ! -e $image_id_hobject ]; then
+      echo "$func: given rados object id <$image_id_hobject> does not exist"
+      exit;
+  fi
+  
+  # get len of string (offset 0, 4 fields)  
+  #local n=`hexdump -e '10/4 "%u"' -s 0 -n 4 $image_id_hobject`
+  #hexdump -e '10/1 "%c"' -s 4 -n $n $image_id_hobject
+  local lenhex=`xxd -seek 0 -len 1 -p $image_id_hobject`
+  local len=$((16#$lenhex))
+  xxd -seek 4 -len $len -p $image_id_hobject | xxd -p -r
+}
+
+#find image_id omap entry in omaplist
+map_header_prefix=
+map_header_key=
+function get_map_header()
+{
+  local func="get_map_header"
+  local image_id=$1
+  if [ "$image_id"x = ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <image_id>"
+      exit;
+  fi
+  map_header_prefix=`get_map_header_prefix`
+  local keyword="header%e"$image_id
+  map_header_key=`get_map_header_key $keyword`
+  if [ "$map_header_key"x = ""x ]; then
+      echo "$func: map_header_key is NULL (not in omaplist)"
       exit
   fi
+  if [ $debug ]; then
+      echo "$func: map_header_key: $map_header_key"
+  fi
+}
+
+#get meta header seq from map_header
+meta_header_seq=
+function get_meta_header_seq() 
+{
+  local func="get_meta_header_seq"
+  if [ "$1"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <prefix>"
+      exit;
+  elif [ "$2"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <key>"
+      exit;
+  fi
+
+  local prefix=$1;
+  local key=$2;
+  meta_header_seq=`get_header_seq $prefix $key`
+  if [ $debug ]; then
+      echo "$func: meta_header_seq: $meta_header_seq"
+  fi
+}
+
+function get_image_metadata_v2()
+{
+  # https://github.com/ceph/ceph/tree/master/src/include/rbd/librbd.h#L89
+  # typedef struct {
+  # uint64_t size;
+  # uint64_t obj_size;
+  # uint64_t num_objs;
+  # int      order;
+  # char     block_name_prefix[RBD_MAX_BLOCK_NAME_SIZE]; /* deprecated */
+  # int64_t  parent_pool;			         /* deprecated */
+  # char     parent_name[RBD_MAX_IMAGE_NAME_SIZE];       /* deprecated */
+  #} rbd_image_info_t;
+
+  # /* image options */
+  # enum {
+  #  RBD_IMAGE_OPTION_FORMAT = 0,
+  #  RBD_IMAGE_OPTION_FEATURES = 1,
+  #  RBD_IMAGE_OPTION_ORDER = 2,
+  #  RBD_IMAGE_OPTION_STRIPE_UNIT = 3,
+  #  RBD_IMAGE_OPTION_STRIPE_COUNT = 4,
+  #  RBD_IMAGE_OPTION_JOURNAL_ORDER = 5,
+  #  RBD_IMAGE_OPTION_JOURNAL_SPLAY_WIDTH = 6,
+  #  RBD_IMAGE_OPTION_JOURNAL_POOL = 7,
+  #  RBD_IMAGE_OPTION_FEATURES_SET = 8,
+  #  RBD_IMAGE_OPTION_FEATURES_CLEAR = 9,
+  #  RBD_IMAGE_OPTION_DATA_POOL = 10
+  #};
+
+  # CEPH_RBD_API int rbd_image_options_is_set(rbd_image_options_t opts,
+  #                                           int optname, bool* is_set);  
+
+  local func="get_image_metadata_v2"
+  if [ "$1"x = ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
+      exit;
+  fi
+  # aline to 16 digets
+  local meta_header_seq=`printf "%016d" $1`
+  if [ $debug ]; then
+      echo "$func: meta_header_seq = $meta_header_seq"
+  fi
+  local ghobject_key="_USER_"$meta_header_seq"_USER_"
+  if [ $debug ]; then
+      echo "$func: ghobject_key = $ghobject_key"
+  fi
+
+  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 21)
+  order=$(get_header_kv $ghobject_key order int 0 1)
+  image_size=$(get_header_kv $ghobject_key size int 4 4)
+  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
+  echo -e "object_prefix:\t$object_prefix"
+  echo -e "order (2^x):\t$order"
+  echo -e "object-size:\t$((2**$order/1024)) KBytes"
+  echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
+  echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
+
+  # parse features
+  feature_mask=$(get_header_kv $ghobject_key features int 0 1)
+  echo -e "feature_mask:\t$feature_mask"
+  parse_feature_mask $feature_mask
+  
+  # list snapshot
+  list_snapshots_v2 $ghobject_key $2
+  #echo -e "snap_seq:\t$snap_seq"
+
+  # ??? TODO: how about parent / overlap / protection?
+  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L12
+  # struct cls_rbd_parent {
+  #   int64_t pool;        ///< parent pool id
+  #   string id;           ///< parent image id
+  #   snapid_t snapid;     ///< parent snapid we refer to
+  #   uint64_t overlap;    ///< portion of this image mapped onto parent (bytes)
+  #
+  #   /// true if our parent pointer information is defined
+  #   bool exists() const {
+  #     return snapid != CEPH_NOSNAP && pool >= 0 && id.length() > 0 && overlap > 0;
+  #   }
+  # list_parent_v2 $1
+  parent=$(get_header_kv $ghobject_key parent string 18 14)
+  if [ "$parent"x != x ]; then
+      echo -e "parent:\t$parent"
+  fi
+}
+
+function parse_feature_mask()
+{
+  local func="parse_feature_mask"
+  local feature_mask=$1
   if [ "$feature_mask"x = ""x ]; then
       echo "$func: missing parameter <feature_mask>"
       exit
@@ -322,195 +464,28 @@ function get_image_features()
     fi
   done
   
-  echo -e "feature_list:\t${feature_list}"
+  echo -e "feature_list:\t(${feature_list})"
 
   # if striping is enabled, get stripe_unit and stript_count
   # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.cc#L679
   # uint64_t stripe_unit;
   # uint8_t stripe_unit;
+  stripe_unit=1
   if [ $debug ]; then
     echo -e "$func: ${rbd_feature_name[1]} -> ${rbd_feature_value[1]}"
   fi
   if [ ${rbd_feature_value[1]} = 1 ]; then
-      stripe_count=$(get_header_kv $ghobject_key stripe_count int 0 1)
-      stripe_unit=$(get_header_kv $ghobject_key stripe_unit int 0 5)
-      if [ -n stripe_unit ]; then
-	echo -e "stripe_unit:\t$stripe_unit"
-	echo -e "stripe_count:\t$stripe_count"
-      else
-	stripe_unit=1
-	echo -e "stripe_unit:\t$stripe_unit (default)"
-      fi
-  fi
-
-  # if layering is enabled, check for parent attributes
-  if [ $debug ]; then
-    echo -e "$func: ${rbd_feature_name[0]} -> ${rbd_feature_value[0]}"
-  fi
-  if [ ${rbd_feature_value[0]} = 1 ]; then
-      get_image_parent $ghobject_key
+      stripe_unit=$(get_header_kv $prefix stripe_unit int 0 5)
+      stripe_count=$(get_header_kv $prefix stripe_count int 0 1)
+      echo -e "stripe_unit:\t$stripe_unit"
+      echo -e "stripe_count:\t$stripe_count"
+  #else
+  #    echo -e "stripe_unit:\t$stripe_unit (default)"
   fi
 }
 
-# decode image id from image_id_hobject 
-function get_image_id()
+function list_snapshots_v2()
 {
-  local func="get_image_id"
-  if [ "$1"x = ""x ]; then
-      exit;
-  fi
-  local image_id_hobject=$1 #from admin node's database
-
-  if [ ! -e $image_id_hobject ]; then
-      echo "$func: given rados object id <$image_id_hobject> does not exist"
-      exit;
-  fi
-  
-  # get len of string (offset 0, 4 fields)  
-  #local n=`hexdump -e '10/4 "%u"' -s 0 -n 4 $image_id_hobject`
-  #hexdump -e '10/1 "%c"' -s 4 -n $n $image_id_hobject
-  local lenhex=`xxd -seek 0 -len 1 -p $image_id_hobject`
-  local len=$((16#$lenhex))
-  xxd -seek 4 -len $len -p $image_id_hobject | xxd -p -r
-}
-
-function get_image_metadata_v2()
-{
-  # https://github.com/ceph/ceph/tree/master/src/include/rbd/librbd.h#L89
-  # typedef struct {
-  # uint64_t size;
-  # uint64_t obj_size;
-  # uint64_t num_objs;
-  # int      order;
-  # char     block_name_prefix[RBD_MAX_BLOCK_NAME_SIZE]; /* deprecated */
-  # int64_t  parent_pool;			         /* deprecated */
-  # char     parent_name[RBD_MAX_IMAGE_NAME_SIZE];       /* deprecated */
-  #} rbd_image_info_t;
-
-  # /* image options */
-  # enum {
-  #  RBD_IMAGE_OPTION_FORMAT = 0,
-  #  RBD_IMAGE_OPTION_FEATURES = 1,
-  #  RBD_IMAGE_OPTION_ORDER = 2,
-  #  RBD_IMAGE_OPTION_STRIPE_UNIT = 3,
-  #  RBD_IMAGE_OPTION_STRIPE_COUNT = 4,
-  #  RBD_IMAGE_OPTION_JOURNAL_ORDER = 5,
-  #  RBD_IMAGE_OPTION_JOURNAL_SPLAY_WIDTH = 6,
-  #  RBD_IMAGE_OPTION_JOURNAL_POOL = 7,
-  #  RBD_IMAGE_OPTION_FEATURES_SET = 8,
-  #  RBD_IMAGE_OPTION_FEATURES_CLEAR = 9,
-  #  RBD_IMAGE_OPTION_DATA_POOL = 10
-  #};
-
-  # CEPH_RBD_API int rbd_image_options_is_set(rbd_image_options_t opts,
-  #                                           int optname, bool* is_set);  
-
-  local func="get_image_metadata_v2"
-  if [ "$1"x = ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
-      exit;
-  fi
-  # aline to 16 digets
-  local meta_header_seq=`printf "%016d" $1`
-  if [ $debug ]; then
-      echo "$func: meta_header_seq = $meta_header_seq"
-  fi
-  local ghobject_key="_USER_"$meta_header_seq"_USER_"
-  if [ $debug ]; then
-      echo "$func: ghobject_key = $ghobject_key"
-  fi
-
-  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 21)
-  order=$(get_header_kv $ghobject_key order int 0 1)
-  image_size=$(get_header_kv $ghobject_key size int 4 4)
-  snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
-  echo -e "object_prefix:\t$object_prefix"
-  echo -e "order (2^x):\t$order"
-  echo -e "object-size:\t$((2**$order/1024)) KBytes"
-  echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
-  echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-
-  # parse features
-  feature_mask=$(get_header_kv $ghobject_key features int 0 1)
-  echo -e "feature_mask:\t$feature_mask"
-  get_image_features $ghobject_key $feature_mask
-  
-  # list snapshot
-  get_image_snapshots $ghobject_key $2
-  #echo -e "snap_seq:\t$snap_seq"
-}
-  
-function get_image_parent()
-{
-  local func="get_image_parent"
-  local ghobject_key=$1
-  if [ "$ghobject_key"x = ""x ]; then
-      echo "$func: missing parameter <ghobject_key>"
-      exit
-  fi
-  if [ $verbose ]; then
-      echo "$func: parse parent attributes ..."
-  fi
-
-  ###
-  # get parent attributes
-  ###
-  # https://github.com/ceph/ceph/blob/master/src/cls/rbd/cls_rbd.h#L12
-  # struct cls_rbd_parent {
-  #   int64_t pool;        ///< parent pool id
-  #   string id;           ///< parent image id
-  #   snapid_t snapid;     ///< parent snapid we refer to
-  #   uint64_t overlap;    ///< portion of this image mapped onto parent (bytes)
-  #
-  #   /// true if our parent pointer information is defined
-  #   bool exists() const {
-  #     return snapid != CEPH_NOSNAP && pool >= 0 && id.length() > 0 && overlap > 0;
-  #   }
-  
-  # Decode the binary representation:
-  # DECODE _START(5,p) -> we decode at 6
-  # bl  type    name
-  # 1	u8	struct_v
-  # 1	u8	struct_compat
-  # 1	u8	struct_len       //s=2 l=1 
-  # 4	u64	pool_id          //s=3 l=4
-  # 6	u64	??????           //s=8 l=6
-  # 13	u8	parent_name_len  //s=14 l=1
-  # 15	u64     ??????           //s=15 l=3
-  # xx	char	parent_name      //s=18 l=$parent_name_len
-  # 1	u8	parent_snap_id   //s=18+$parent_name_len l=1
-  # 8	u64	overlap          //s=18+$parent_name_len+8+1 l=4
-  # 8	u8	parent_protect   //s=18+$parent_name_len+8+4 l=1
-  # ......
-  parent_stuct_len=$(get_header_kv $ghobject_key parent int 2 1)
-  parent_id_len=$(get_header_kv $ghobject_key parent int 14 1)
-  if [ "$parent_id_len"x != ""x ]; then
-      parent_pool_id=$(get_header_kv $ghobject_key parent int 3 4)
-      parent_id=$(get_header_kv $ghobject_key parent string 18 $parent_id_len)
-      parent_snap_id=$(get_header_kv $ghobject_key parent int $((18+$parent_id_len)) 1)
-      parent_overlap=$(get_header_kv $ghobject_key parent int $((18+$parent_id_len+8+1)) 4)
-      parent_protect=$(get_header_kv $ghobject_key parent int $((18+$parent_id_len+8+4)) 1)
-      echo -e "parent_pool_id:\t$parent_pool_id"
-      echo -e "parent_id_len:\t$parent_id_len"
-      echo -e "parent_id:\t$parent_id"
-      echo -e "parent_snap_id:\t$parent_snap_id"
-      echo -e "parent_protect:\t$parent_protect"
-      echo -e "parent_overlap:\t$parent_overlap"
-  fi
-  
-  if [ $debug ]; then
-      local ghobject_value=/tmp/kv.ghobject_value
-      ceph_kvstore_tool $kvdb_type $omap_path get $ghobject_key parent out $ghobject_value 2>/dev/null
-      echo get_value="ghobject_value"
-      xxd -p $ghobject_value
-  fi
-}
-
-function get_image_snapshots()
-{
-  ###
-  # get snapshot attributes
-  ###
   # https://github.com/ceph/ceph/tree/master/src/include/rbd/librbd.h#L67
   # typedef struct {
   #   uint64_t id;
@@ -550,7 +525,7 @@ function get_image_snapshots()
   # 1   u8      protection_status       //s=18+len+16 n=1
   # ......
 
-  local func="get_image_snapshots"
+  local func="list_snapshots_v2"
   if [ "$1"x = ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
       exit
@@ -574,39 +549,38 @@ function get_image_snapshots()
       #echo -e "snapshots\tID\tNAME\t\tSIZE"
       for value in ${values[@]}
       do
-	if [ $debug ]; then
-	    echo -e "snapshot-count:\t${#values[*]}"
-	fi
 	svalue="snapshot_$value"
 	snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
 	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_name_len)
+	if [ $debug ]; then
+	    echo -e "snapshot-count:\t${#values[*]}"
+	fi
 	case "$sname"x in
 	  x) # list all available snapshots
 	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 0 1)
 	    snap_struct_len=$(get_header_kv $ghobject_key $svalue int 2 1)
 	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
+	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
 	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
 	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
 	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
-	    echo "### begin ->  snapshot-metadata @$snap_name"
-	    echo -e "snap_name:\t$snap_name"
-	    echo -e "snap_id:\t$snap_id"
 	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_id:\t$snap_id"
 	    echo -e "snap_name_len:\t$snap_name_len"
+	    echo -e "snap_name:\t$snap_name"
 	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
 	    #echo -e "snap_order (2^x):\t$order"
 	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-	    echo -e "protect:\t$snap_protection_status"
 	    echo -e "snap_features:\t$snap_features"
-	    get_image_features $ghobject_key $snap_features
-	    ;;
+	    echo -e "protect:\t$snap_protection_status"
+	    parse_feature_mask $snap_features
+	  ;;
 	  "$snap_name"x) # just print out info for matching snapshot
-	    echo "### begin -> snapshot-metadata: @$snap_name"
 	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
 	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
 	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
 	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
-	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
+	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 8)
 	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
 	    echo -e "snap_struct_v:\t$snap_struct_v"
 	    echo -e "snap_struct_l:\t$snap_struct_len"
@@ -614,63 +588,27 @@ function get_image_snapshots()
 	    #echo -e "snap_name_len:\t$snap_name_len
 	    echo -e "snap_name:\t$snap_name (selected)"
 	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
-	    echo -e "protect:\t$snap_protection_status"
 	    echo -e "snap_features:\t$snap_features"
-	    get_image_features $ghobject_key $snap_features
+	    echo -e "protect:\t$snap_protection_status"
+	    parse_feature_mask $snap_features
 	    break
-	    ;;
+	  ;;
 	esac
-      done  # for value in ${values[@]}
 
-      echo "### end -> snapshot-metadata"
+	### WIP: Layering (COW-clone, only with format 2)
+	# - read parent id
+	# - status of the snapshot: protected?
+	# - image may have different properties (size, clones, etc.)
+	snap_parent=$(get_header_kv $ghobject_key parent string 18 14)
+	if [ ! -z $parent ]; then
+	    echo -e "snap_parent:\t$snap_parent"
+	fi
+
+      done
   else
     if [ $debug ]; then
 	echo "$func: no snapshots found."
     fi
-  fi
-}
-
-#find image_id omap entry in omaplist
-map_header_prefix=
-map_header_key=
-function get_map_header()
-{
-  local func="get_map_header"
-  local image_id=$1
-  if [ "$image_id"x = ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <image_id>"
-      exit;
-  fi
-  map_header_prefix=`get_map_header_prefix`
-  local keyword="header%e"$image_id
-  map_header_key=`get_map_header_key $keyword`
-  if [ "$map_header_key"x = ""x ]; then
-      echo "$func: map_header_key is NULL (not in omaplist)"
-      exit
-  fi
-  if [ $debug ]; then
-      echo "$func: map_header_key: $map_header_key"
-  fi
-}
-
-#get meta header seq from map_header_key
-meta_header_seq=
-function get_meta_header_seq() 
-{
-  local func="get_meta_header_seq"
-  if [ "$1"x == ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <prefix>"
-      exit;
-  elif [ "$2"x == ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <key>"
-      exit;
-  fi
-
-  local prefix=$1;
-  local key=$2;
-  meta_header_seq=`get_header_seq $prefix $key`
-  if [ $debug ]; then
-      echo "$func: meta_header_seq: $meta_header_seq"
   fi
 }
 

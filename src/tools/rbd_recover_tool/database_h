@@ -336,7 +336,7 @@ function lookup_image()
 	pushd $database >/dev/null
 	local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
 	local tcoll=/tmp/tmp_image_head_coll.$$$$
-	# we need grep to include the filename = node for any match
+	# we need the grep to include the filename = node for any match
 	if [ $debug ]; then
 	    echo "$func: rbd-object-v2 -> grep --with-filename -E $pattern * >$tcoll"
 	fi
