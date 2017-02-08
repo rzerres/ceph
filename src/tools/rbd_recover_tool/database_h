@@ -243,7 +243,9 @@ function lookup_image()
   local res2=/tmp/tmp_res2.$$$$
   local data_path=
 
-  # rbd-object-v1
+  ###
+  # lookup rbd-object-v1
+  ###
   {
     cat $image_coll_v1|grep -E "/$img_name\.rbd__head_[0-9A-F]{8}__$hex_pool_id" >$res1
     if [ -s $res1 ]; then
@@ -277,7 +279,9 @@ function lookup_image()
     fi
   }
 
-  # rbd-object-v2
+  ###
+  # lookup: rbd-object-v2
+  ###
   {
     cat $image_coll_v2|grep -E "/rbd\\\\uid\."$img_name"__head_[0-9A-F]{8}__$hex_pool_id" >$res2
     if [ -s $res2 ]; then
@@ -332,7 +336,7 @@ function lookup_image()
 	pushd $database >/dev/null
 	local pattern="rbd.uheader\."$image_id"__head_[0-9A-F]{8}__$hex_pool_id"
 	local tcoll=/tmp/tmp_image_head_coll.$$$$
-	# we need the grep to include the filename = node for any match
+	# we need grep to include the filename = node for any match
 	if [ $debug ]; then
 	    echo "$func: rbd-object-v2 -> grep --with-filename -E $pattern * >$tcoll"
 	fi
@@ -469,45 +473,49 @@ function lookup_image()
 	ssh $ssh_option $node $cmd | tee $result
     fi  #end if [ -s $res1 ]; then
 
-  } #end image format v2
+  } #end lookup: image format v2
 
+  ###
+  # store results
+  ###
   if [ ! -s $result ]; then
-      echo "$func: $image_name_in does not exist, terminating" 
+      echo "$func: $image_name_in does not exist, terminating"
       exit
   fi
-  
-  # to assign value to global variable
-  db_image_prefix=`cat $result|awk '/^(object_prefix|block_name):/{print $2}'`
-  if [ "$db_image_prefix"x = ""x ]; then
-      echo "$func: image_prefix does not exist, terminating"
-      exit
-  fi
-
-  db_image_size=`cat $result|awk '/^image_size:/{print $2}'`
-  db_order=`cat $result|awk '/^order \(2\^x\):/{print $3}'`
-  if [ "$snap_name"x != ""x ]; then
-      db_snap_id=`cat $result|awk '/^snap_id:/{print $2}'`
-      if [ "$db_snap_id"x = ""x ]; then
-	  echo "$func: $image_name_in@$snap_name does not exist"
-	  exit
-      fi
-      db_snap_image_size=`cat $result|awk '/^snap_size:/{print $2}'`
-  else
-    #save snaplist
-    local image_snaplist=$images/pool_$pool_id/$image_name_in/@snaplist
-    local image_dir=$images/pool_$pool_id/$image_name_in
-    if [ ! -e $image_dir ]; then
-	mkdir -p $image_dir
-    fi
-    #cat $result|awk '/^snapshot:/{print $2" "$3" "$4}' >$image_snaplist
-    cat $result >$image_snaplist
-  fi
-
-  found=1
   if [ $debug ]; then
       echo "$func: result string given below"
       cat $result
   fi
+
+  # parse result via awk and save values in appropriate output-files
+  local db_image_path=$images/pool_$pool_id/$image_name_in
+  if [ ! -d $db_image_path ]; then
+      mkdir -p $db_image_path 2>/dev/null
+  fi
+  awk -v db_image_path="$db_image_path" '
+  BEGIN {
+  	FS=":\t"
+	RS="\n"
+	OFS=""
+ 	print db_image_path
+  }
+  # only process non comments lines
+  $0 !~ /^[#]+/ {
+       switch ($1) {
+       	      case "object_prefix":
+	      	   # split out the object_id
+	    	   split($2, object, ".")
+	    	   OUTFILE=db_image_path"/"object[2]
+	    	   break
+	      case "snap_name":
+	      	   OUTFILE=db_image_path"/@"$2
+    	}
+    	print $1, ":\t", $2 > OUTFILE
+  }
+  #END { print "Processed: ", NR , " records\n" }
+  ' $result
+
+  found=1
   rm -f $result
 }
 
