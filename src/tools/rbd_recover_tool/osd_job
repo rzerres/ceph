@@ -193,18 +193,21 @@ function do_image_metadata_v2()
       echo "$func: ..."
       echo "$func: data_path=$1"
       echo "$func: image_id=$2"
-      echo "$func: image_header_object=$3"
+      echo "$func: image_object_header=$3"
       echo "$func: snap_name=$4"
   fi
+  # common_h: prepare path to store data for given osd
   init_env_osd $1
   local image_id=$2
-  local image_header_object=$3
+  local image_object_header=$3
   local snap_name=$4
-  # metadata.h: search in omap_list -> returns map_header_key (rbd_header.<id>...head.<pool>.<seq>)
+  # metadata_h: get_map_header
+  # returns map_header_header (_HOBJTOSEQ_)
+  # returns map_header_value (rbd_header.<id>...head.<pool>.<seq>)
   get_map_header $image_id
-  # metadata.h: get_meta_header_seq -> returns decimal value of header_seq
-  get_meta_header_seq $map_header_prefix $map_header_key
-  # osd_job: get_image_metadata_v2: decrypt values for key _USER_<16d_header_seq>_USER
+  # metadata_h: get_meta_header_seq -> returns decimal value of meta_header_seq (e.g: 17426)
+  get_meta_header_seq $map_header_key $map_header_value
+  # osd_job: get_image_metadata_v2: decrypt values for key _USER_<16d_header_seq>_USER  
   get_image_metadata_v2 $meta_header_seq $snap_name
 }
 

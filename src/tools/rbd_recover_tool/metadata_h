@@ -542,17 +542,17 @@ function get_image_snapshots()
   # 1	u8	struct_v
   # 1	u8	struct_compat
   # 4	u32	struct_len
-  # 8	u64	snapid_t id             //s=3 n=4
-  # 4	u32	name_len                //s=14 n=1
-  # xx	char	name                    //s=18 n=name_len
-  # 8	u64	image_size              //s=18+len n=1
-  # 8	u64	features                //s=18+len+8 n=1
-  # 1   u8      protection_status       //s=18+len+16 n=1
+  # 8	u64	snapid_t id        //s=3 n=4
+  # 4	u32	name_len           //s=14 n=1
+  # xx	char	name               //s=18 n=name_len
+  # 8	u64	overlap_size       //s=18+len n=len
+  # 8	u64	features           //s=18+len+8 n=1
+  # 8   u8      protection_status  //s=18+len+16 n=1
   # ......
 
   local func="get_image_snapshots"
   if [ "$1"x = ""x ]; then
-      echo "$func: ceph-kvstore-tool missing parameter <meta_header_seq>"
+      echo "$func: ceph-kvstore-tool missing parameter <header_meta_seq>"
       exit
   fi
   local ghobject_key=$1
@@ -650,7 +650,28 @@ function get_map_header()
   fi
   if [ $debug ]; then
       echo "$func: map_header_key: $map_header_key"
+
+function get_map_header_key()
+{
+  echo "_HOBJTOSEQ_"
+}
+
+function get_map_header_value()
+{
+  local func="get_map_header_value"
+  if [ "$1"x = ""x ]; then
+    echo $func': missing parameter <key>'
+    exit 
+  fi 
+  local keyword=$1
+  local res=`cat $omap_list| grep $keyword`
+  if [ "$res"x = ""x ]; then
+      if [ $debug ]; then
+	  echo "$func: omap_list -> key = $keyword does not exist"
+      fi
+    exit
   fi
+  echo $res|awk -F ":" '{print $2}'
 }
 
 #get meta header seq from map_header_key

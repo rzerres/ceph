@@ -279,6 +279,7 @@ function scatter_node_jobs()
 
 function gather_node_infos()
 {
+  # gather processed metadata from osd-nodes to admin-node
   local func="gather_node_infos"
   echo "$func ..."
   >$pg_coll
@@ -340,27 +341,37 @@ function cleanup()
 
 function database()
 {
+  if [ $debug ]; then
+      init_env_nodes
+  fi
   gen_database
   scatter_gather
 }
 
 function list()
 {
-  #init_env_nodes
+  if [ $debug ]; then
+      init_env_nodes
+  fi
   #gather_node_infos
+  # database_h: present list of found rbd-images
   list_images
 }
 
 function lookup()
 {
-  #init_env_nodes
-  # process rbd image-metadata: <pool-id> <rbd-name> <snap-name>
+  if [ $debug ]; then
+      init_env_nodes
+  fi
+  # database_h: process rbd image-metadata: <pool-id> <rbd-name> <snap-name>
   lookup_image $1 $2 $3
 }
 
 function recover()
 {
-  #init_env_nodes
+  if [ $debug ]; then
+      init_env_nodes
+  fi
   # recover rbd object: <pool-id> <rbd-name> <snap-name> <dest-path>
   recover_image $1 $2 $3 $4
 }
