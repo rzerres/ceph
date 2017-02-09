@@ -721,18 +721,32 @@ function get_image_snapshots()
 	    echo -e "snap_name:\t$snap_name"
 	    echo -e "snap_id:\t$snap_id"
 	    echo -e "snap_name_len:\t$snap_name_len"
+	    echo -e "snap_struct_v:\t$snap_struct_v"
+	    echo -e "snap_struct_l:\t$snap_struct_len"
+	    echo -e "overlap_size:\t$(($overlap_size/1024)) KBytes"
+	    #echo -e "snap_size:\t$(($snap_size/1024)) MBytes ($(($snap_size/1024/1024)) GBytes)"
+	    #echo -e "snap_order (2^x):\t$order"
+	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
+	    echo -e "protect:\t$snap_protection_status"
+	    echo -e "snap_features:\t$snap_features"
+	    get_image_features $ghobject_key $snap_features
+	    ;;
+	  "$snap_name"x) # just print out info for matching snapshot
+	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 0 1)
+	    snap_struct_len=$(get_header_kv $ghobject_key $svalue int 2 1)
+	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
 	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
 	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+8)) 1)
 	    overlap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
 	    #snap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
-	    echo "### begin -> snapshot-metadata: @$snap_name"
+	    echo "### begin ->  snapshot-metadata @$snap_name"
 	    echo -e "snap_name:\t$snap_name"
 	    echo -e "snap_id:\t$snap_id"
+	    echo -e "snap_name_len:\t$snap_name_len"
 	    echo -e "snap_struct_v:\t$snap_struct_v"
 	    echo -e "snap_struct_l:\t$snap_struct_len"
-	    echo -e "snap_name_len:\t$snap_name_len"
 	    echo -e "overlap_size:\t$(($overlap_size/1024)) KBytes"
-	    #echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	    #echo -e "snap_size:\t$(($snap_size/1024)) MBytes ($(($snap_size/1024/1024)) GBytes)"
 	    #echo -e "snap_order (2^x):\t$order"
 	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
 	    echo -e "protect:\t$snap_protection_status"
