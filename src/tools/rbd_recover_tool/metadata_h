@@ -216,12 +216,139 @@ function get_image_metadata_v1()
 #  */
 
 # /* Metadata is stored in the object-map and decrypted with ceph-kvstore-tool tool
-#  * rbd_header.<id>...head.<pool>.<seq> object extracted via get_map_header/get_meta_header_seq
+#  * rbd_header.<id>...head.<pool>.<seq> object extracted via get_header_map/get_header_meta_seq
 #  * key/value: ceph-kvstore-tool kvdb-type /storepath/to/omap list _USER_<16digits>_USER_
-#  *            generic attributes: object_prefix;order;size;features;parent;snap_seq
-#  *            feature-specific:   stripe_unit;stripe_count;snapshot
+#  *            generic attributes: object_prefix;order;size;features;snap_seq
+#  *            feature-specific:   stripe_unit;stripe_count;snapshot;parent
 #  *
 #  */
+# /* Metadata Definitions: https://github.com/ceph/ceph/blob/master/src/tools/rbd_recover_tool/metadata_h#L192
+#  * for image format 2: map_header, meta_header_seq, header, key/value
+#  * eg. 
+#  * map_header  	_HOBJTOSEQ_:rbd%uheader%e139a6b8b4567...head.2.68E826B6
+#  * meta_header_seq:	17426
+#  * header:	        _USER_0000000000017426_USER_:object_prefix
+#  *			_USER_0000000000017426_USER_:order
+#  *			_USER_0000000000017426_USER_:size
+#  *			_USER_0000000000017426_USER_:snap_seq
+#  *			_USER_0000000000017426_USER_:snapshot
+#  *			_USER_0000000000017426_USER_:features
+#  *			_USER_0000000000017426_USER_:_epoch
+#  *			_USER_0000000000017426_USER_:_biginfo
+#  *			_USER_0000000000017426_USER_:_info
+#  *			_USER_0000000000017426_USER_:_infover
+#  *                    key                         :value
+#  * ceph-kvstore-tool leveldb /path_to_omap/omap _USER_0000000000017426_USER_ size)
+#  */
+
+
+# get header info key/value
+function get_header_kv()
+{
+  local func="get_header_kv"
+  local prefix=$1
+  local key=$2
+  local type=$3
+  local seek=$4
+  local len=$5
+  local res=/tmp/kv.$$$$
+  local hexvalue
+  local value
+  
+  if [ -z $prefix ]; then
+      if [ $debug ]; then
+	  echo "$func: ceph-kvstore-tool needs a valid object prefix"
+      fi
+      exit
+  elif [ -z $key ]; then
+    if [ $debug ]; then
+      echo "$func: ceph-kvstore-tool needs a valid key "
+    fi
+    exit
+  elif [ "$type"x != "int"x ] && [ "$type"x != "le_int"x ] && [ "$type"x != "string"x ]; then
+    if [ $debug ]; then
+      echo "$func: ceph-kvstore-tool need a valid input type (string|int|le_int)"
+    fi
+    exit
+  fi
+
+  # values are dumped in hex (big-endian format)
+  #ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key 2>/dev/null 1>$res
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
+  if [ $? != 0 ]; then
+    if [ $debug ]; then
+      echo "$func: error -> ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key"
+    fi
+    exit
+  fi
+
+  if [ "$type"x = "string"x ]; then
+    # process dump: offset 4, switch next 24 octets
+    test -z $seek && seek=4;
+    test -z $len && len=24;
+    value=`xxd -seek $seek -len $len -p $res | xxd -r -p`
+  elif [ "$type"x = "int"x ]; then
+    test -z $seek && seek=0;
+    test -z $len && len=8;
+    hexvalue=`xxd -seek $seek -len $len -p $res`
+    value=`printf "%d" 0x$hexvalue`
+  elif [ "$type"x = "le_int"x ]; then
+    # use little endian conversion
+    test -z $seek && seek=0;
+    test -z $len && len=4;
+    hexvalue=`xxd -seek $seek -len $len -e $res | \
+       awk 'BEGIN { -F ":" } { print $2; }'`
+    value=`printf "%d" 0x$hexvalue`
+  fi
+  #if [ $debug ]; then
+  #    echo "\n[debug] $func: key: $prefix -> value: $value>"
+  #fi
+  rm -f $res
+  echo $value
+}
+
+function get_header_seq()
+{
+  #use ceph-kvstore-tool to extract seq-position
+  local func="get_header_seq"
+  if [ "$1"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <prefix>"
+      exit;
+  elif [ "$2"x == ""x ]; then
+      echo "$func: ceph-kvstore-tool missing parameter <key>"
+      exit;
+  fi
+  local prefix=$1;
+  local key=$2;
+  local res=/tmp/header_seq.$$$$
+  local hexseq
+  local seq
+  
+  # ceph-kvstore-tool dumps values in hex (big-endian format)
+  # ($key, $value)
+  # (_HOBJTOSEQ_, ...head.0.00000011)
+  # 00000000  02 01 81 00 00 00 87 e4  12 00 00 00 00 00 00 00
+  # relevant seq is coded in uint64: 8 bytes (big-endian):
+  # -> 00 00 00 00 00 87 E4 12
+  # => 12 e4 87 00 00 00 00 00 
+  # use xxd to process the hex dump
+  # finally transform the hex output to the needed integer
+  # header_seq = echo $((16#000000000012e487)) -> 1238151
+  ceph-kvstore-tool $kvdb_type $omap_path get $prefix $key out $res 2>/dev/null 1>/dev/null
+  if [ $? != 0 ]; then
+      exit;
+  fi
+  
+  # process dump: offset 6, switch next 8 octets to little endian 
+  hexseq=`xxd -seek 6 -len 8 -e $res | \
+       awk 'BEGIN { -F ":" } { print $2; }'`
+  seq=`printf "%d" 0x$hexseq`
+  if [ "$seq"x = ""x ]; then
+    exit;
+  fi
+  rm -f $res
+  echo $seq
+}
 
 function get_image_features()
 {
@@ -420,14 +547,14 @@ function get_image_metadata_v2()
       echo "$func: ghobject_key = $ghobject_key"
   fi
 
-  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 21)
+  object_prefix=$(get_header_kv $ghobject_key object_prefix string 4 24)
   order=$(get_header_kv $ghobject_key order int 0 1)
-  image_size=$(get_header_kv $ghobject_key size int 4 4)
+  image_size=$(get_header_kv $ghobject_key size int 0 8)
   snap_seq=$(get_header_kv $ghobject_key snap_seq int 0 1)
   echo -e "object_prefix:\t$object_prefix"
   echo -e "order (2^x):\t$order"
   echo -e "object-size:\t$((2**$order/1024)) KBytes"
-  echo -e "image_size:\t$image_size Bytes ($(($image_size/1024/1024)) GBytes)"
+  echo -e "image_size:\t$(($image_size/1024)) KBytes ($(($image_size/1024/1024)) MBytes)"
   echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
 
   # parse features
@@ -578,42 +705,36 @@ function get_image_snapshots()
 	    echo -e "snapshot-count:\t${#values[*]}"
 	fi
 	svalue="snapshot_$value"
-	snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	#snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
+	snap_name_len=$(get_header_kv $ghobject_key $svalue int 14 1)
 	snap_name=$(get_header_kv $ghobject_key $svalue string 18 $snap_name_len)
 	case "$sname"x in
 	  x) # list all available snapshots
 	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 0 1)
 	    snap_struct_len=$(get_header_kv $ghobject_key $svalue int 2 1)
 	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
-	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
 	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
-	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+8)) 1)
+	    overlap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
+	    #snap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
 	    echo "### begin ->  snapshot-metadata @$snap_name"
 	    echo -e "snap_name:\t$snap_name"
 	    echo -e "snap_id:\t$snap_id"
-	    echo -e "snap_struct_v:\t$snap_struct_v"
 	    echo -e "snap_name_len:\t$snap_name_len"
-	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
-	    #echo -e "snap_order (2^x):\t$order"
-	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
-	    echo -e "protect:\t$snap_protection_status"
-	    echo -e "snap_features:\t$snap_features"
-	    get_image_features $ghobject_key $snap_features
-	    ;;
-	  "$snap_name"x) # just print out info for matching snapshot
-	    echo "### begin -> snapshot-metadata: @$snap_name"
-	    snap_struct_v=$(get_header_kv $ghobject_key $svalue int 2 1)
-	    snap_id=$(get_header_kv $ghobject_key $svalue int 3 4)
-	    #snap_name_len=$(get_header_kv $ghobject_key $svalue int 7 8)
-	    snap_size=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len)) 4)
 	    snap_protection_status=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+3)) 1)
-	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+4+4)) 1)
+	    snap_features=$(get_header_kv $ghobject_key $svalue int $((18+$snap_name_len+8)) 1)
+	    overlap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
+	    #snap_size=$(get_header_kv $ghobject_key $svalue le_int $((18+$snap_name_len+8+5)) 4)
+	    echo "### begin -> snapshot-metadata: @$snap_name"
+	    echo -e "snap_name:\t$snap_name"
+	    echo -e "snap_id:\t$snap_id"
 	    echo -e "snap_struct_v:\t$snap_struct_v"
 	    echo -e "snap_struct_l:\t$snap_struct_len"
-	    echo -e "snap_id:\t$snap_id"
-	    #echo -e "snap_name_len:\t$snap_name_len
-	    echo -e "snap_name:\t$snap_name (selected)"
-	    echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	    echo -e "snap_name_len:\t$snap_name_len"
+	    echo -e "overlap_size:\t$(($overlap_size/1024)) KBytes"
+	    #echo -e "snap_size:\t$snap_size Bytes ($(($snap_size/1024/1024)) GBytes)"
+	    #echo -e "snap_order (2^x):\t$order"
+	    #echo -e "image_objects:\t$(($image_size/$((2**$order/1024))))"
 	    echo -e "protect:\t$snap_protection_status"
 	    echo -e "snap_features:\t$snap_features"
 	    get_image_features $ghobject_key $snap_features
@@ -621,8 +742,9 @@ function get_image_snapshots()
 	    ;;
 	esac
       done  # for value in ${values[@]}
-
-      echo "### end -> snapshot-metadata"
+      if [ $debug ]; then
+	  echo "### end -> snapshot-metadata"
+      fi
   else
     if [ $debug ]; then
 	echo "$func: no snapshots found."
@@ -631,8 +753,8 @@ function get_image_snapshots()
 }
 
 #find image_id omap entry in omaplist
-map_header_prefix=
 map_header_key=
+map_header_value=
 function get_map_header()
 {
   local func="get_map_header"
@@ -641,15 +763,17 @@ function get_map_header()
       echo "$func: ceph-kvstore-tool missing parameter <image_id>"
       exit;
   fi
-  map_header_prefix=`get_map_header_prefix`
+  map_header_key=`get_map_header_key`
   local keyword="header%e"$image_id
-  map_header_key=`get_map_header_key $keyword`
-  if [ "$map_header_key"x = ""x ]; then
-      echo "$func: map_header_key is NULL (not in omaplist)"
+  map_header_value=`get_map_header_value $keyword`
+  if [ "$map_header_value"x = ""x ]; then
+      echo "$func: map_header_value is NULL (can't get from not omap list)"
       exit
   fi
   if [ $debug ]; then
-      echo "$func: map_header_key: $map_header_key"
+      echo "$func: map_header_value: $map_header_value"
+  fi
+}
 
 function get_map_header_key()
 {
@@ -674,11 +798,11 @@ function get_map_header_value()
   echo $res|awk -F ":" '{print $2}'
 }
 
-#get meta header seq from map_header_key
+#get header seq from map_header_key
 meta_header_seq=
-function get_meta_header_seq() 
+function get_meta_header_seq()
 {
-  local func="get_meta_header_seq"
+  local func="get_header_meta_seq"
   if [ "$1"x == ""x ]; then
       echo "$func: ceph-kvstore-tool missing parameter <prefix>"
       exit;

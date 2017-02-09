@@ -105,7 +105,7 @@ function gather_hobject_common()
   fi
   local underline_image_prefix=`convert_underline $image_prefix`
   local dump_image_prefix=`dump_backslash $underline_image_prefix`
-  local images_raw_dir=$rbd_image/raw
+  local images_raw_dir=$images_raw
   local image_hobjects_dir=$images/pool_$pool_id/$image_prefix
   # $images/raw/$image_prefix"_head"
   local image_hobjects_raw=$images_raw_dir/$image_prefix"$fsuffix"
@@ -123,7 +123,7 @@ function gather_hobject_common()
   pushd $database >/dev/null
   local  pattern="\.[0-9a-f]+__"$hex_snap_id"_[0-9A-F]{8}__"$hex_pool_id
   >$image_hobjects_raw
-  grep --recursive --extended-regexp "$dump_image_prefix $pattern" * >$image_hobjects_raw
+  grep --recursive --extended-regexp $dump_image_prefix""$pattern * >$image_hobjects_raw
   if [ ! -s $image_hobjects_raw ]; then
       echo "$func: image snap [ $image_prefix"$psuffix" ] is empty"
       return 1 #no data available
@@ -211,13 +211,13 @@ function choose_epoch()
   cat $1|sort -t ' ' -k 3.1,3nr -k 2.1,2n |head -n 1;
 }
 
-# lookup image info , after scatter_node_jobs & gather_node_infos
+# lookup image metadata , after scatter_node_jobs & gather_node_infos
 function lookup_image()
 {
   local func="lookup_image"
   if [ $# -lt 2 ]; then
       echo "$func: syntax error"
-      #echo "\tplease provide parameter <pool_id> <image_name> [<snap_name>]"
+      echo "\tplease provide parameter <pool_id> <image_name> [<snap_name>]"
       exit 1;
   fi
   local pool_id="$1"
@@ -340,7 +340,7 @@ function lookup_image()
 	if [ $debug ]; then
 	    echo "$func: rbd-object-v2 -> grep --with-filename -E $pattern * >$tcoll"
 	fi
-	grep --with-filename -E $pattern * >$tcoll
+	grep --with-filename --extended-regexp $pattern * >$tcoll
 	popd >/dev/null
 
 	if [ $debug ]; then
@@ -465,12 +465,15 @@ function lookup_image()
 	# make sure there is no active ceph-osd process on target osd-node
 	check_osd_process $node
 	
-	# process the metadata
+	# decrypt the metadata on respective osd-node
 	cmd="bash $job_path/osd_job do_image_metadata_v2 $data_path $image_id `dump_backslash $image_hobject` $snap_name" 
 	if [ $debug ]; then
 	    echo "$func: call -> 'ssh $ssh_option $node $cmd'"
 	fi
 	ssh $ssh_option $node $cmd | tee $result
+
+	rm $res1
+	rm $res2
     fi  #end if [ -s $res1 ]; then
 
   } #end lookup: image format v2
@@ -483,16 +486,16 @@ function lookup_image()
       exit
   fi
   if [ $debug ]; then
-      echo "$func: result string given below"
-      cat $result
+      echo "$func: precessing results ..."
+      #cat $result
   fi
 
   # parse result via awk and save values in appropriate output-files
   local db_image_path=$images/pool_$pool_id/$image_name_in
   if [ ! -d $db_image_path ]; then
-      mkdir -p $db_image_path 2>/dev/null
+      mkdir -p $db_image_path >/dev/null
   fi
-  awk -v db_image_path="$db_image_path" '
+  awk -v db_image_path="$db_image_path" -v db_image_name="$image_name_in" '
   BEGIN {
   	FS=":\t"
 	RS="\n"
@@ -505,7 +508,8 @@ function lookup_image()
        	      case "object_prefix":
 	      	   # split out the object_id
 	    	   split($2, object, ".")
-	    	   OUTFILE=db_image_path"/"object[2]
+	    	   #OUTFILE=db_image_path"/"object[2]
+	    	   OUTFILE=db_image_path"/"db_image_name
 	    	   break
 	      case "snap_name":
 	      	   OUTFILE=db_image_path"/@"$2
@@ -514,7 +518,17 @@ function lookup_image()
   }
   #END { print "Processed: ", NR , " records\n" }
   ' $result
-
+  
+  pushd $db_image_path/$db_image_name >/dev/null
+  db_image_prefix=`cat $images/pool_$pool_id/$image_name/$image_name|awk '/^(object_prefix|block_name):/{print $2}'`
+  if [ ! -h $db_image_prefix ]; then
+      ln -s $image_name_in $db_image_prefix >/dev/null
+  fi
+  if [ $debug ]; then
+      echo "$func: finished precessing results"
+      #cat $result
+  fi
+  
   found=1
   rm -f $result
 }
@@ -541,7 +555,8 @@ function discover_image_nosnap()
   local pool_id=$1
   local image_name=$2
   pool_id=$(($pool_id))
-  lookup_image $pool_id $image_name # assign $image_prefix
+  # assign image_prefix for given image_name gathered form lookup_image run
+  db_image_prefix=`cat $images/pool_$pool_id/$image_name/$image_name|awk '/^(object_prefix|block_name):/{print $2}'`
   gather_hobject_nosnap $pool_id $db_image_prefix 
   if [ $? -ne 0 ]; then
       exit
